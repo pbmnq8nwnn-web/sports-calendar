@@ -14,14 +14,6 @@
 
 在這個資料夾打開終端機：
 
-```bash
-cd "/Users/chenszu-jung/Library/Application Support/.../outputs/sports-calendar"
-git init -b main
-git add .
-git commit -m "init"
-git remote add origin https://github.com/<你的帳號>/sports-calendar.git
-git push -u origin main
-```
 
 ### 3. 啟用 GitHub Actions 寫入權限
 
