@@ -1,0 +1,50 @@
+name: Update Sports Calendar
+
+on:
+  schedule:
+    # 每天 UTC 16:00（台北 00:00）執行一次
+    - cron: "0 16 * * *"
+  workflow_dispatch:  # 手動觸發
+  push:
+    branches: [main]
+    paths:
+      - "config.yaml"
+      - "generate.py"
+      - "requirements.txt"
+      - ".github/workflows/update-calendar.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Generate calendar
+        run: python generate.py
+
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/sports.ics
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "chore: refresh sports.ics ($(date -u +%Y-%m-%dT%H:%MZ))"
+            git push
+          fi
