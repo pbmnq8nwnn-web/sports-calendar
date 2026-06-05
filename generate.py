@@ -1,0 +1,477 @@
+#!/usr/bin/env python3
+"""
+Sports Calendar Generator
+抓取 NBA / MLB / F1 / 世界杯賽程，依 config.yaml 過濾指定球隊，
+輸出 docs/sports.ics 供 Apple 行事曆訂閱。
+"""
+import sys
+import uuid
+import hashlib
+import logging
+from datetime import datetime, timedelta, date
+from zoneinfo import ZoneInfo
+from pathlib import Path
+
+import yaml
+import requests
+from icalendar import Calendar, Event
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+log = logging.getLogger("sports-cal")
+
+UTC = ZoneInfo("UTC")
+ROOT = Path(__file__).parent
+OUT_PATH = ROOT / "docs" / "sports.ics"
+
+SESSION = requests.Session()
+SESSION.headers.update({
+    "User-Agent": "Mozilla/5.0 (sports-calendar-bot; https://github.com/your/repo)"
+})
+
+
+# ---------------- Helpers ----------------
+
+def make_uid(*parts) -> str:
+    raw = "|".join(str(p) for p in parts)
+    h = hashlib.md5(raw.encode()).hexdigest()
+    return f"{h}@sports-calendar"
+
+
+def make_event(uid, start_utc, duration_min, summary, location="", description=""):
+    ev = Event()
+    ev.add("uid", uid)
+    ev.add("dtstamp", datetime.now(UTC))
+    ev.add("dtstart", start_utc)
+    ev.add("dtend", start_utc + timedelta(minutes=duration_min))
+    ev.add("summary", summary)
+    if location:
+        ev.add("location", location)
+    if description:
+        ev.add("description", description)
+    return ev
+
+
+def fetch_json(url, params=None, timeout=30):
+    log.info("GET %s %s", url, params or "")
+    r = SESSION.get(url, params=params, timeout=timeout)
+    r.raise_for_status()
+    return r.json()
+
+
+# ---------------- MLB ----------------
+
+# MLB 全隊中文對照
+MLB_ZH = {
+    108: "天使", 109: "響尾蛇", 110: "金鶯", 111: "紅襪", 112: "小熊",
+    113: "紅人", 114: "守護者", 115: "落磯", 116: "老虎", 117: "太空人",
+    118: "皇家", 119: "道奇", 120: "國民", 121: "大都會", 133: "運動家",
+    134: "海盜", 135: "教士", 136: "水手", 137: "巨人", 138: "紅雀",
+    139: "光芒", 140: "遊騎兵", 141: "藍鳥", 142: "雙城", 143: "費城人",
+    144: "勇士", 145: "白襪", 146: "馬林魚", 147: "洋基", 158: "釀酒人",
+}
+
+
+def fetch_mlb(cfg, season_year):
+    if not cfg.get("enabled"):
+        return []
+    events = []
+    team_ids = [t["id"] for t in cfg["teams"]]
+    # 合併使用者選擇的中文名 + 全隊備用中文名
+    zh_map = dict(MLB_ZH)
+    zh_map.update({t["id"]: t["zh"] for t in cfg["teams"]})
+
+    # MLB regular season roughly Mar-Oct; fetch broad range
+    start = f"{season_year}-03-01"
+    end = f"{season_year}-11-15"
+
+    for tid in team_ids:
+        try:
+            data = fetch_json(
+                "https://statsapi.mlb.com/api/v1/schedule",
+                params={
+                    "sportId": 1,
+                    "teamId": tid,
+                    "startDate": start,
+                    "endDate": end,
+                },
+            )
+        except Exception as e:
+            log.error("MLB fetch failed for team %s: %s", tid, e)
+            continue
+
+        for d in data.get("dates", []):
+            for g in d.get("games", []):
+                home = g["teams"]["home"]["team"]
+                away = g["teams"]["away"]["team"]
+                # avoid duplicate when both teams in our list
+                game_pk = g["gamePk"]
+                start_utc = datetime.fromisoformat(g["gameDate"].replace("Z", "+00:00"))
+                # zh names
+                zh_home = zh_map.get(home["id"], home["name"])
+                zh_away = zh_map.get(away["id"], away["name"])
+                summary = f"⚾ MLB｜{zh_away} @ {zh_home}"
+                if g.get("seriesDescription") and g["seriesDescription"] != "Regular Season":
+                    summary += f"（{g['seriesDescription']}）"
+                venue = g.get("venue", {}).get("name", "")
+                uid = make_uid("mlb", game_pk)
+                events.append(make_event(
+                    uid, start_utc, 210,  # ~3.5h
+                    summary,
+                    location=venue,
+                    description=f"{away['name']} @ {home['name']}",
+                ))
+
+    # dedupe by uid
+    seen = set()
+    uniq = []
+    for ev in events:
+        u = str(ev["uid"])
+        if u not in seen:
+            seen.add(u)
+            uniq.append(ev)
+    log.info("MLB: %d events", len(uniq))
+    return uniq
+
+
+# ---------------- NBA ----------------
+
+# NBA 全隊中文對照（ESPN id → 中文）
+NBA_ZH = {
+    1: "老鷹", 2: "塞爾提克", 17: "籃網", 30: "黃蜂", 4: "公牛",
+    5: "騎士", 6: "獨行俠", 7: "金塊", 8: "活塞", 9: "勇士",
+    10: "火箭", 11: "溜馬", 12: "快艇", 13: "湖人", 29: "灰熊",
+    14: "熱火", 15: "公鹿", 16: "灰狼", 3: "鵜鶘", 18: "尼克",
+    25: "雷霆", 19: "魔術", 20: "76人", 21: "太陽", 22: "拓荒者",
+    23: "國王", 24: "馬刺", 28: "暴龍", 26: "爵士", 27: "巫師",
+}
+
+
+def fetch_nba(cfg):
+    if not cfg.get("enabled"):
+        return []
+    events = []
+    # 合併使用者選擇的中文名 + 全隊備用中文名
+    zh_map = dict(NBA_ZH)
+    zh_map.update({t["id"]: t["zh"] for t in cfg["teams"]})
+
+    # 跨季 + 跨 seasontype 抓取（seasontype: 1=Preseason, 2=Regular, 3=Postseason）
+    # 6 月時 current season 已結束，next season 10 月開打，所以都抓
+    today = date.today()
+    seasons = [today.year, today.year + 1] if today.month >= 7 else [today.year - 1, today.year]
+    seasontypes = [2, 3]  # 例行賽 + 季後賽（預設不抓季前賽，避免雜訊）
+
+    for team in cfg["teams"]:
+        tid = team["id"]
+        for season in seasons:
+            for stype in seasontypes:
+                url = f"https://site.web.api.espn.com/apis/site/v2/sports/basketball/nba/teams/{tid}/schedule"
+                try:
+                    data = fetch_json(url, params={"season": season, "seasontype": stype})
+                except Exception as e:
+                    log.warning("NBA fetch failed team=%s season=%s type=%s: %s", tid, season, stype, e)
+                    continue
+
+                for ev in data.get("events", []):
+                    comp = ev.get("competitions", [{}])[0]
+                    start_iso = comp.get("date") or ev.get("date")
+                    if not start_iso:
+                        continue
+                    try:
+                        start_utc = datetime.fromisoformat(start_iso.replace("Z", "+00:00"))
+                    except Exception:
+                        continue
+
+                    competitors = comp.get("competitors", [])
+                    home = next((c for c in competitors if c.get("homeAway") == "home"), {})
+                    away = next((c for c in competitors if c.get("homeAway") == "away"), {})
+                    home_team = home.get("team", {})
+                    away_team = away.get("team", {})
+
+                    try:
+                        home_id = int(home_team.get("id", 0))
+                        away_id = int(away_team.get("id", 0))
+                    except (TypeError, ValueError):
+                        continue
+
+                    zh_home = zh_map.get(home_id, home_team.get("displayName", "?"))
+                    zh_away = zh_map.get(away_id, away_team.get("displayName", "?"))
+
+                    # 場次類型 label（從 API 回傳的 seasonType 推斷，比參數可靠）
+                    type_name = ev.get("seasonType", {}).get("name", "") or ""
+                    label = ""
+                    if "Playoff" in type_name or "Postseason" in type_name or stype == 3:
+                        # 嘗試從 notes 拿輪次資訊
+                        notes = comp.get("notes", []) or []
+                        round_text = ""
+                        for n in notes:
+                            head = n.get("headline", "") or ""
+                            if any(k in head for k in ["Round", "Conference", "Finals"]):
+                                round_text = head
+                                break
+                        label = f"（季後賽{' - ' + round_text if round_text else ''}）"
+                    elif "Preseason" in type_name:
+                        label = "（季前賽）"
+
+                    summary = f"🏀 NBA｜{zh_away} @ {zh_home}{label}"
+                    venue = comp.get("venue", {}).get("fullName", "")
+                    event_id = ev.get("id") or comp.get("id")
+                    uid = make_uid("nba", event_id)
+                    events.append(make_event(
+                        uid, start_utc, 150,  # ~2.5h
+                        summary,
+                        location=venue,
+                        description=f"{away_team.get('displayName','')} @ {home_team.get('displayName','')}",
+                    ))
+
+    # dedupe by uid
+    seen = set()
+    uniq = []
+    for ev in events:
+        u = str(ev["uid"])
+        if u not in seen:
+            seen.add(u)
+            uniq.append(ev)
+    log.info("NBA: %d events", len(uniq))
+    return uniq
+
+
+# ---------------- F1 ----------------
+
+F1_SESSION_NAMES = {
+    "FirstPractice":     ("FP1", "練習一", 90, False),
+    "SecondPractice":    ("FP2", "練習二", 90, False),
+    "ThirdPractice":     ("FP3", "練習三", 90, False),
+    "Qualifying":        ("Q",   "排位賽", 70, True),
+    "SprintQualifying":  ("SQ",  "Sprint排位", 45, True),
+    "Sprint":            ("S",   "Sprint正賽", 60, True),
+    # the race itself is at race["date"]/["time"], handled separately
+}
+
+
+def f1_session_enabled(cfg, key):
+    s = cfg.get("sessions", {})
+    mapping = {
+        "FirstPractice": "practice1",
+        "SecondPractice": "practice2",
+        "ThirdPractice": "practice3",
+        "Qualifying": "qualifying",
+        "SprintQualifying": "sprint_qualifying",
+        "Sprint": "sprint",
+    }
+    return bool(s.get(mapping.get(key, ""), False))
+
+
+def fetch_f1(cfg):
+    if not cfg.get("enabled"):
+        return []
+    events = []
+    season = cfg.get("season", date.today().year)
+    try:
+        data = fetch_json(f"https://api.jolpi.ca/ergast/f1/{season}.json")
+    except Exception as e:
+        log.error("F1 fetch failed: %s", e)
+        return []
+
+    race_session_enabled = cfg.get("sessions", {}).get("race", True)
+
+    for race in data["MRData"]["RaceTable"]["Races"]:
+        round_no = race["round"]
+        name = race["raceName"]
+        circuit = race["Circuit"]["circuitName"]
+        loc = race["Circuit"]["Location"]
+        location = f"{loc['locality']}, {loc['country']}"
+
+        # Race itself
+        if race_session_enabled:
+            try:
+                start_utc = datetime.fromisoformat(
+                    f"{race['date']}T{race.get('time', '00:00:00Z').replace('Z','+00:00')}"
+                )
+                uid = make_uid("f1", season, round_no, "Race")
+                events.append(make_event(
+                    uid, start_utc, 120,
+                    f"🏎️ F1｜R{round_no} {name}（正賽）",
+                    location=f"{circuit}, {location}",
+                    description=f"Round {round_no} - {name}",
+                ))
+            except Exception as e:
+                log.warning("F1 race time parse failed for round %s: %s", round_no, e)
+
+        # Other sessions
+        for key, (short, zh, dur, _) in F1_SESSION_NAMES.items():
+            if key not in race:
+                continue
+            if not f1_session_enabled(cfg, key):
+                continue
+            sess = race[key]
+            try:
+                start_utc = datetime.fromisoformat(
+                    f"{sess['date']}T{sess['time'].replace('Z','+00:00')}"
+                )
+                uid = make_uid("f1", season, round_no, key)
+                events.append(make_event(
+                    uid, start_utc, dur,
+                    f"🏎️ F1｜R{round_no} {name}（{zh}）",
+                    location=f"{circuit}, {location}",
+                    description=f"Round {round_no} - {name} - {short}",
+                ))
+            except Exception as e:
+                log.warning("F1 %s parse failed for round %s: %s", key, round_no, e)
+
+    log.info("F1: %d events", len(events))
+    return events
+
+
+# ---------------- World Cup ----------------
+
+# 國名中文對照
+WC_ZH = {
+    "Argentina": "阿根廷", "Brazil": "巴西", "France": "法國",
+    "England": "英格蘭", "Japan": "日本", "South Korea": "韓國",
+    "Norway": "挪威", "Portugal": "葡萄牙", "Spain": "西班牙",
+    "Mexico": "墨西哥", "USA": "美國", "Canada": "加拿大",
+    "Germany": "德國", "Italy": "義大利", "Netherlands": "荷蘭",
+    "Belgium": "比利時", "Croatia": "克羅埃西亞", "Uruguay": "烏拉圭",
+    "Colombia": "哥倫比亞", "Morocco": "摩洛哥", "Senegal": "塞內加爾",
+    "Australia": "澳洲", "Switzerland": "瑞士", "Denmark": "丹麥",
+    "Poland": "波蘭", "Czechia": "捷克", "Serbia": "塞爾維亞",
+    "Ecuador": "厄瓜多", "Iran": "伊朗", "Saudi Arabia": "沙烏地阿拉伯",
+    "Qatar": "卡達", "Tunisia": "突尼西亞", "Cameroon": "喀麥隆",
+    "Ghana": "迦納", "Costa Rica": "哥斯大黎加", "Wales": "威爾斯",
+    "South Africa": "南非",
+}
+
+
+def _wc_zh(name):
+    return WC_ZH.get(name, name)
+
+
+def fetch_worldcup(cfg):
+    if not cfg.get("enabled"):
+        return []
+    events = []
+    selected = set(cfg.get("teams", []))
+    knockout_all = cfg.get("knockout_all", False)
+
+    # World Cup 2026: 11 Jun – 19 Jul
+    start = date(2026, 6, 11)
+    end = date(2026, 7, 19)
+    cur = start
+    seen_event_ids = set()
+
+    knockout_types = {"Round of 32", "Round of 16", "Quarterfinal",
+                      "Semifinal", "3rd Place", "Final"}
+
+    while cur <= end:
+        date_str = cur.strftime("%Y%m%d")
+        try:
+            data = fetch_json(
+                "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard",
+                params={"dates": date_str},
+            )
+        except Exception as e:
+            log.warning("World Cup fetch failed for %s: %s", date_str, e)
+            cur += timedelta(days=1)
+            continue
+
+        for ev in data.get("events", []):
+            ev_id = ev.get("id")
+            if ev_id in seen_event_ids:
+                continue
+            seen_event_ids.add(ev_id)
+
+            comp = ev.get("competitions", [{}])[0]
+            start_iso = comp.get("date") or ev.get("date")
+            if not start_iso:
+                continue
+
+            competitors = comp.get("competitors", [])
+            home = next((c for c in competitors if c.get("homeAway") == "home"), {})
+            away = next((c for c in competitors if c.get("homeAway") == "away"), {})
+            home_name = home.get("team", {}).get("displayName", "?")
+            away_name = away.get("team", {}).get("displayName", "?")
+
+            # Stage detection
+            slug = ev.get("season", {}).get("slug", "") or ""
+            notes = comp.get("notes", []) or []
+            stage_text = ""
+            for n in notes:
+                if n.get("type") == "event":
+                    stage_text = n.get("headline", "")
+                    break
+
+            is_knockout = any(k.lower() in (slug + " " + stage_text).lower()
+                              for k in ["round-of", "quarter", "semi", "final", "third"])
+
+            include = False
+            if home_name in selected or away_name in selected:
+                include = True
+            if knockout_all and is_knockout:
+                include = True
+
+            if not include:
+                continue
+
+            try:
+                start_utc = datetime.fromisoformat(start_iso.replace("Z", "+00:00"))
+            except Exception:
+                continue
+
+            zh_home = _wc_zh(home_name)
+            zh_away = _wc_zh(away_name)
+            label = ""
+            if stage_text:
+                label = f"（{stage_text}）"
+            elif "group" in slug.lower():
+                label = "（小組賽）"
+
+            summary = f"⚽ 世界杯｜{zh_away} vs {zh_home}{label}"
+            venue = comp.get("venue", {}).get("fullName", "")
+            uid = make_uid("wc", ev_id)
+            events.append(make_event(
+                uid, start_utc, 120,
+                summary,
+                location=venue,
+                description=f"{away_name} vs {home_name}",
+            ))
+
+        cur += timedelta(days=1)
+
+    log.info("World Cup: %d events", len(events))
+    return events
+
+
+# ---------------- Main ----------------
+
+def main():
+    cfg_path = ROOT / "config.yaml"
+    cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+
+    tz_name = cfg.get("timezone", "Asia/Taipei")
+    log.info("Display timezone: %s (events stored as UTC, Apple Calendar will convert)", tz_name)
+
+    cal = Calendar()
+    cal.add("prodid", "-//Sports Calendar//ZH-TW//")
+    cal.add("version", "2.0")
+    cal.add("x-wr-calname", "運動賽事訂閱 (NBA/MLB/F1/世界杯)")
+    cal.add("x-wr-timezone", tz_name)
+    cal.add("x-wr-caldesc", "自動產生的賽程訂閱檔 — 修改 config.yaml 即可變更追蹤對象")
+
+    season = date.today().year
+
+    all_events = []
+    all_events += fetch_mlb(cfg.get("mlb", {}), season)
+    all_events += fetch_nba(cfg.get("nba", {}))
+    all_events += fetch_f1(cfg.get("f1", {}))
+    all_events += fetch_worldcup(cfg.get("worldcup", {}))
+
+    for ev in all_events:
+        cal.add_component(ev)
+
+    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    OUT_PATH.write_bytes(cal.to_ical())
+    log.info("Wrote %d events to %s", len(all_events), OUT_PATH)
+
+
+if __name__ == "__main__":
+    main()

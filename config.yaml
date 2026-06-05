@@ -1,0 +1,51 @@
+# 運動賽事訂閱設定
+# 修改下面的隊伍清單以變更追蹤對象，commit 後 GitHub Actions 會自動更新 .ics
+
+timezone: Asia/Taipei
+
+nba:
+  enabled: true
+  # ESPN team id 對照: lakers=13, spurs=24, warriors=9, celtics=2,
+  # mavericks=6, suns=21, thunder=25, bucks=15, sixers=20, nuggets=7, heat=14
+  teams:
+    - { id: 13, name: "Los Angeles Lakers", zh: "湖人" }
+    - { id: 24, name: "San Antonio Spurs", zh: "馬刺" }
+
+mlb:
+  enabled: true
+  # MLB team id 對照: dodgers=119, yankees=147, astros=117, tigers=116,
+  # padres=135, redsox=111, mets=121, braves=144, phillies=143
+  teams:
+    - { id: 119, name: "Los Angeles Dodgers", zh: "道奇" }
+    - { id: 147, name: "New York Yankees", zh: "洋基" }
+    - { id: 117, name: "Houston Astros", zh: "太空人" }
+    - { id: 116, name: "Detroit Tigers", zh: "老虎" }
+
+f1:
+  enabled: true
+  season: 2026
+  # 要納入的場次類型
+  sessions:
+    qualifying: true        # 排位賽
+    race: true              # 正賽
+    sprint_qualifying: true # Sprint 排位（只在 Sprint 週末有）
+    sprint: true            # Sprint 正賽（只在 Sprint 週末有）
+    practice1: false
+    practice2: false
+    practice3: false
+
+worldcup:
+  enabled: true
+  # ESPN team name 對照（注意拼法）
+  teams:
+    - "Argentina"
+    - "Brazil"
+    - "France"
+    - "England"
+    - "Japan"
+    - "South Korea"
+    - "Norway"
+    - "Portugal"
+    - "Spain"
+  # 淘汰賽是否全部納入（不限定隊伍）
+  knockout_all: false
