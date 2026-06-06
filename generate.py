@@ -324,7 +324,7 @@ def fetch_f1(cfg):
 
 # ---------------- World Cup ----------------
 
-# 國名中文對照
+# 國名中文對照（涵蓋 2026 世界杯全 48 隊 + 常見會出現的隊伍）
 WC_ZH = {
     "Argentina": "阿根廷", "Brazil": "巴西", "France": "法國",
     "England": "英格蘭", "Japan": "日本", "South Korea": "韓國",
@@ -339,6 +339,30 @@ WC_ZH = {
     "Qatar": "卡達", "Tunisia": "突尼西亞", "Cameroon": "喀麥隆",
     "Ghana": "迦納", "Costa Rica": "哥斯大黎加", "Wales": "威爾斯",
     "South Africa": "南非",
+    # 補充
+    "Sweden": "瑞典", "Norway": "挪威", "Finland": "芬蘭",
+    "Austria": "奧地利", "Scotland": "蘇格蘭", "Ireland": "愛爾蘭",
+    "Republic of Ireland": "愛爾蘭", "Wales": "威爾斯",
+    "Iceland": "冰島", "Turkey": "土耳其", "Türkiye": "土耳其",
+    "Greece": "希臘", "Romania": "羅馬尼亞", "Hungary": "匈牙利",
+    "Ukraine": "烏克蘭", "Bosnia-Herzegovina": "波士尼亞與赫塞哥維納",
+    "Slovakia": "斯洛伐克", "Slovenia": "斯洛維尼亞",
+    "Albania": "阿爾巴尼亞", "North Macedonia": "北馬其頓",
+    "Israel": "以色列",
+    "Algeria": "阿爾及利亞", "Egypt": "埃及", "Nigeria": "奈及利亞",
+    "Ivory Coast": "象牙海岸", "Côte d'Ivoire": "象牙海岸",
+    "Mali": "馬利", "Burkina Faso": "布吉納法索",
+    "Congo DR": "剛果民主共和國", "DR Congo": "剛果民主共和國",
+    "Cape Verde": "維德角",
+    "Iraq": "伊拉克", "Jordan": "約旦", "United Arab Emirates": "阿聯",
+    "UAE": "阿聯", "Oman": "阿曼", "Uzbekistan": "烏茲別克",
+    "Australia": "澳洲", "New Zealand": "紐西蘭",
+    "Bolivia": "玻利維亞", "Paraguay": "巴拉圭", "Peru": "秘魯",
+    "Venezuela": "委內瑞拉", "Chile": "智利",
+    "Panama": "巴拿馬", "Honduras": "宏都拉斯", "El Salvador": "薩爾瓦多",
+    "Guatemala": "瓜地馬拉", "Jamaica": "牙買加",
+    "Trinidad and Tobago": "千里達及托巴哥",
+    "Haiti": "海地", "Curaçao": "古拉索", "Suriname": "蘇利南",
 }
 
 
@@ -425,7 +449,14 @@ def fetch_worldcup(cfg):
             elif "group" in slug.lower():
                 label = "（小組賽）"
 
-            summary = f"⚽ 世界杯｜{zh_away} vs {zh_home}{label}"
+            # 把使用者選擇的隊伍放前面，方便在行事曆視覺上一眼識別
+            if away_name in selected:
+                summary = f"⚽ 世界杯｜{zh_away} vs {zh_home}{label}"
+            elif home_name in selected:
+                summary = f"⚽ 世界杯｜{zh_home} vs {zh_away}{label}"
+            else:
+                # 純淘汰賽（knockout_all 觸發）：用 home vs away
+                summary = f"⚽ 世界杯｜{zh_home} vs {zh_away}{label}"
             venue = comp.get("venue", {}).get("fullName", "")
             uid = make_uid("wc", ev_id)
             events.append(make_event(
