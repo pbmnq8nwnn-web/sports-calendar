@@ -150,6 +150,29 @@ python generate.py
 
 預設每天 UTC 16:00（台北 00:00）自動跑。修改 `.github/workflows/update-calendar.yml` 的 cron 可調整。
 
+## 監控與通知（可選）
+
+Workflow 內建：
+- **事件數驗證**：產出 `.ics` 如果 < 100 筆，自動視為失敗（防止 ESPN 暫時掛掉但 workflow 卻成功）
+- **Telegram 推送**：失敗時即時通知；成功時推每日摘要（含事件數）
+
+### 啟用 Telegram 通知
+
+1. **建立 Bot**：Telegram 搜 `@BotFather` → `/newbot` → 取名 → 拿到 token（類似 `7123456789:AAH8z...`）
+2. **找 Chat ID**：搜你剛建的 bot → 按 Start → 對它說 `/start`
+3. 瀏覽器打開 `https://api.telegram.org/bot<你的TOKEN>/getUpdates`，找 `"chat":{"id":XXXXX}` 那個數字
+4. **加 GitHub Secrets**：Repo → Settings → Secrets and variables → Actions → New repository secret，加兩個：
+   - `TELEGRAM_BOT_TOKEN` = bot token
+   - `TELEGRAM_CHAT_ID` = chat ID
+
+設定完之後不用改 workflow，下次跑就會通知。Secrets 是加密儲存，公開 repo 也安全。
+
+如果沒設這兩個 secret，workflow 一樣會跑，只是不會推 Telegram。
+
+### GitHub 預設通知
+
+Workflow 失敗時 GitHub 預設會寄 email 到你的帳號 email（前提是 Settings → Notifications 把 Actions 那欄打勾）。
+
 ## 授權
 
 MIT License。詳見 [LICENSE](LICENSE)。
