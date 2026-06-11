@@ -37,14 +37,64 @@ jobs:
       - name: Generate calendar
         run: python generate.py
 
+      - name: Validate event count (sanity check)
+        id: validate
+        run: |
+          if [ ! -f docs/sports.ics ]; then
+            echo "ERROR: docs/sports.ics not generated" >&2
+            exit 1
+          fi
+          COUNT=$(grep -c '^BEGIN:VEVENT' docs/sports.ics || true)
+          echo "event_count=$COUNT" >> $GITHUB_OUTPUT
+          echo "Total events: $COUNT"
+          MIN_EVENTS=${MIN_EVENTS:-100}
+          if [ "$COUNT" -lt "$MIN_EVENTS" ]; then
+            echo "ERROR: too few events ($COUNT < $MIN_EVENTS), likely upstream API issue" >&2
+            exit 1
+          fi
+
       - name: Commit if changed
+        id: commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/sports.ics
           if git diff --staged --quiet; then
             echo "No changes to commit."
+            echo "changed=false" >> $GITHUB_OUTPUT
           else
             git commit -m "chore: refresh sports.ics ($(date -u +%Y-%m-%dT%H:%MZ))"
             git push
+            echo "changed=true" >> $GITHUB_OUTPUT
           fi
+
+      - name: Notify Telegram on success (daily summary)
+        if: success() && env.TELEGRAM_BOT_TOKEN != ''
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          EVENT_COUNT: ${{ steps.validate.outputs.event_count }}
+          CHANGED: ${{ steps.commit.outputs.changed }}
+        run: |
+          if [ "$CHANGED" = "true" ]; then
+            MSG="✅ Sports Calendar 已更新：${EVENT_COUNT} 場賽事"
+          else
+            MSG="✅ Sports Calendar 檢查完成（${EVENT_COUNT} 場，本次無新異動）"
+          fi
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d text="${MSG}" \
+            -d disable_notification=true > /dev/null
+
+      - name: Notify Telegram on failure
+        if: failure() && env.TELEGRAM_BOT_TOKEN != ''
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          MSG="❌ Sports Calendar workflow 失敗
+          Repo: ${{ github.repository }}
+          Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d text="${MSG}" > /dev/null
