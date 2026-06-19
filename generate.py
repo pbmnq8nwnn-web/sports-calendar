@@ -80,20 +80,36 @@ def fetch_mlb(cfg, season_year):
     zh_map = dict(MLB_ZH)
     zh_map.update({t["id"]: t["zh"] for t in cfg["teams"]})
 
+    # 追蹤的球員
+    tracked = cfg.get("tracked_players", []) or []
+    tracked_pitcher_ids = {p["id"] for p in tracked if p.get("track") in ("pitcher", "both")}
+    tracked_lineup_ids = {p["id"] for p in tracked if p.get("track") in ("lineup", "both")}
+    tracked_zh = {p["id"]: p["zh"] for p in tracked}
+
     # MLB regular season roughly Mar-Oct; fetch broad range
     start = f"{season_year}-03-01"
     end = f"{season_year}-11-15"
 
     for tid in team_ids:
         try:
+            params = {
+                "sportId": 1,
+                "teamId": tid,
+                "startDate": start,
+                "endDate": end,
+            }
+            # 只在有追蹤球員時 hydrate，省 payload
+            if tracked_pitcher_ids or tracked_lineup_ids:
+                hydrates = []
+                if tracked_pitcher_ids:
+                    hydrates.append("probablePitcher")
+                if tracked_lineup_ids:
+                    hydrates.append("lineups")
+                params["hydrate"] = ",".join(hydrates)
+
             data = fetch_json(
                 "https://statsapi.mlb.com/api/v1/schedule",
-                params={
-                    "sportId": 1,
-                    "teamId": tid,
-                    "startDate": start,
-                    "endDate": end,
-                },
+                params=params,
             )
         except Exception as e:
             log.error("MLB fetch failed for team %s: %s", tid, e)
@@ -112,6 +128,30 @@ def fetch_mlb(cfg, season_year):
                 summary = f"⚾ MLB｜{zh_away} @ {zh_home}"
                 if g.get("seriesDescription") and g["seriesDescription"] != "Regular Season":
                     summary += f"（{g['seriesDescription']}）"
+
+                # 比對追蹤球員 (保留次序：投手 → 野手；away → home)
+                matched = []
+                for side in ("away", "home"):
+                    pp = g["teams"][side].get("probablePitcher") or {}
+                    pid = pp.get("id")
+                    if pid in tracked_pitcher_ids:
+                        zh = tracked_zh.get(pid, pp.get("fullName", "?"))
+                        if zh not in matched:
+                            matched.append(zh)
+
+                # 野手陣容：lineups.homePlayers / awayPlayers（list of player objs）
+                lineups = g.get("lineups") or {}
+                for key in ("awayPlayers", "homePlayers"):
+                    for p in lineups.get(key, []) or []:
+                        pid = p.get("id")
+                        if pid in tracked_lineup_ids:
+                            zh = tracked_zh.get(pid, p.get("fullName", "?"))
+                            if zh not in matched:
+                                matched.append(zh)
+
+                if matched:
+                    summary += "  🎯" + "、".join(matched)
+
                 venue = g.get("venue", {}).get("name", "")
                 uid = make_uid("mlb", game_pk)
                 events.append(make_event(
