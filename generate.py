@@ -406,8 +406,24 @@ WC_ZH = {
 }
 
 
+_WC_PLACEHOLDER_RE = __import__("re").compile(r"Group ([A-L]) (1st|2nd|3rd|4th) Place")
+_WC_ORD = {"1st": "1", "2nd": "2", "3rd": "3", "4th": "4"}
+
+
 def _wc_zh(name):
-    return WC_ZH.get(name, name)
+    if name in WC_ZH:
+        return WC_ZH[name]
+    # 淘汰賽占位名翻譯：Group A 2nd Place → A 組第 2
+    m = _WC_PLACEHOLDER_RE.match(name)
+    if m:
+        grp, ord_str = m.group(1), m.group(2)
+        return f"{grp} 組第 {_WC_ORD.get(ord_str, ord_str)}"
+    # 其他常見占位：Winner Match 49 / 32 Best 3rd 之類
+    if "Winner Match" in name or "Match Winner" in name:
+        return name.replace("Winner Match", "M").replace("Match Winner", "M")  # 縮短
+    if "Best 3rd" in name:
+        return name.replace("Best 3rd", "B3")
+    return name
 
 
 def fetch_worldcup(cfg):
@@ -483,11 +499,25 @@ def fetch_worldcup(cfg):
 
             zh_home = _wc_zh(home_name)
             zh_away = _wc_zh(away_name)
+            # 階段標籤：先看 slug，再看 stage_text
+            slug_low = (slug or "").lower()
             label = ""
-            if stage_text:
-                label = f"（{stage_text}）"
-            elif "group" in slug.lower():
+            if "round-of-32" in slug_low:
+                label = "（32 強）"
+            elif "round-of-16" in slug_low or "rd-of-16" in slug_low:
+                label = "（16 強）"
+            elif "quarter" in slug_low:
+                label = "（8 強）"
+            elif "semi" in slug_low:
+                label = "（4 強）"
+            elif "third-place" in slug_low or "3rd-place" in slug_low:
+                label = "（季軍賽）"
+            elif slug_low == "final" or slug_low.endswith("/final"):
+                label = "（冠軍賽）"
+            elif "group" in slug_low:
                 label = "（小組賽）"
+            elif stage_text:
+                label = f"（{stage_text}）"
 
             # 把使用者選擇的隊伍放前面，方便在行事曆視覺上一眼識別
             if away_name in selected:

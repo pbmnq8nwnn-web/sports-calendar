@@ -57,4 +57,6 @@ worldcup:
     - "Portugal"
     - "Spain"
   # 淘汰賽是否全部納入（不限定隊伍）
+  # false = 只收選擇隊伍晉級的場次（小組賽結束後 ESPN 更新隊名才會出現）
+  # true  = 全部淘汰賽都納入
   knockout_all: false
