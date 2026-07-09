@@ -9,6 +9,7 @@ on:
     branches: [main]
     paths:
       - "config.yaml"
+      - "data/**"
       - "generate.py"
       - "requirements.txt"
       - ".github/workflows/update-calendar.yml"
