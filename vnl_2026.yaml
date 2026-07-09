@@ -1,0 +1,64 @@
+# 2026 VNL 小組賽賽程（手動整理自 Wikipedia）
+# 資料來源：
+#   https://en.wikipedia.org/wiki/2026_FIVB_Men's_Volleyball_Nations_League
+#   https://en.wikipedia.org/wiki/2026_FIVB_Women's_Volleyball_Nations_League
+# 時區為當地時間；generate.py 會轉 UTC。
+# 明年 VNL 2027 需要更新這個檔案。
+# Finals（男 7/29-8/2 Ningbo；女 7/22-26 Macau）等晉級隊伍公布再手動補入。
+
+matches:
+  # ================ 女排 Week 1: 6/3-6/7 ================
+  # Pool 1 (Quebec City, Canada, UTC-4)
+  - {date: "2026-06-03", time: "16:30", tz: "America/Toronto", gender: "women", home: "France", away: "Japan",  venue: "Centre Vidéotron, Quebec City"}
+  - {date: "2026-06-05", time: "16:30", tz: "America/Toronto", gender: "women", home: "Ukraine", away: "Japan", venue: "Centre Vidéotron, Quebec City"}
+  - {date: "2026-06-06", time: "20:00", tz: "America/Toronto", gender: "women", home: "Germany", away: "Japan", venue: "Centre Vidéotron, Quebec City"}
+  - {date: "2026-06-07", time: "18:00", tz: "America/Toronto", gender: "women", home: "Canada", away: "Japan",  venue: "Centre Vidéotron, Quebec City"}
+  # Pool 2 (Brasília, Brazil, UTC-3)
+  - {date: "2026-06-03", time: "20:00", tz: "America/Sao_Paulo", gender: "women", home: "Brazil", away: "Netherlands",          venue: "Nilson Nelson Gymnasium, Brasília"}
+  - {date: "2026-06-04", time: "20:00", tz: "America/Sao_Paulo", gender: "women", home: "Brazil", away: "Dominican Republic",  venue: "Nilson Nelson Gymnasium, Brasília"}
+  - {date: "2026-06-06", time: "11:00", tz: "America/Sao_Paulo", gender: "women", home: "Brazil", away: "Bulgaria",            venue: "Nilson Nelson Gymnasium, Brasília"}
+  - {date: "2026-06-07", time: "14:30", tz: "America/Sao_Paulo", gender: "women", home: "Brazil", away: "Italy",               venue: "Nilson Nelson Gymnasium, Brasília"}
+
+  # ================ 男排 Week 1: 6/10-6/14 ================
+  # Pool 3 (Linyi, China, UTC+8)
+  - {date: "2026-06-10", time: "20:00", tz: "Asia/Shanghai", gender: "men", home: "Ukraine",  away: "Japan",  venue: "Linyi Olympic Sports Park Gymnasium"}
+  - {date: "2026-06-12", time: "20:00", tz: "Asia/Shanghai", gender: "men", home: "Japan",    away: "Poland", venue: "Linyi Olympic Sports Park Gymnasium"}
+  - {date: "2026-06-13", time: "16:30", tz: "Asia/Shanghai", gender: "men", home: "China",    away: "Japan",  venue: "Linyi Olympic Sports Park Gymnasium"}
+  - {date: "2026-06-14", time: "20:00", tz: "Asia/Shanghai", gender: "men", home: "Slovenia", away: "Japan",  venue: "Linyi Olympic Sports Park Gymnasium"}
+
+  # ================ 女排 Week 2: 6/17-6/21 ================
+  # Pool 4 (Ankara, Turkey, UTC+3)
+  - {date: "2026-06-17", time: "16:00", tz: "Europe/Istanbul", gender: "women", home: "France",  away: "Brazil",  venue: "Ankara Arena"}
+  - {date: "2026-06-18", time: "16:00", tz: "Europe/Istanbul", gender: "women", home: "Belgium", away: "Brazil",  venue: "Ankara Arena"}
+  - {date: "2026-06-20", time: "16:00", tz: "Europe/Istanbul", gender: "women", home: "China",   away: "Brazil",  venue: "Ankara Arena"}
+  - {date: "2026-06-21", time: "16:00", tz: "Europe/Istanbul", gender: "women", home: "Germany", away: "Brazil",  venue: "Ankara Arena"}
+  # Pool 5 (Cebu, Philippines, UTC+8)
+  - {date: "2026-06-17", time: "20:00", tz: "Asia/Manila", gender: "women", home: "Japan", away: "Serbia",             venue: "SM Seaside Arena, Cebu"}
+  - {date: "2026-06-19", time: "20:00", tz: "Asia/Manila", gender: "women", home: "Japan", away: "Czech Republic",     venue: "SM Seaside Arena, Cebu"}
+  - {date: "2026-06-20", time: "20:00", tz: "Asia/Manila", gender: "women", home: "Japan", away: "Dominican Republic", venue: "SM Seaside Arena, Cebu"}
+  - {date: "2026-06-21", time: "20:00", tz: "Asia/Manila", gender: "women", home: "Japan", away: "Italy",              venue: "SM Seaside Arena, Cebu"}
+
+  # ================ 男排 Week 2: 6/24-6/28 ================
+  # Pool 4 (Orléans, France, UTC+2 CEST)
+  - {date: "2026-06-24", time: "13:30", tz: "Europe/Paris", gender: "men", home: "Serbia",         away: "Japan", venue: "CO'Met Arena, Orléans"}
+  - {date: "2026-06-26", time: "17:00", tz: "Europe/Paris", gender: "men", home: "Iran",           away: "Japan", venue: "CO'Met Arena, Orléans"}
+  - {date: "2026-06-27", time: "17:00", tz: "Europe/Paris", gender: "men", home: "United States",  away: "Japan", venue: "CO'Met Arena, Orléans"}
+  - {date: "2026-06-28", time: "17:00", tz: "Europe/Paris", gender: "men", home: "France",         away: "Japan", venue: "CO'Met Arena, Orléans"}
+
+  # ================ 女排 Week 3: 7/8-7/12 ================
+  # Pool 9 (Osaka, Japan, UTC+9)
+  - {date: "2026-07-08", time: "19:20", tz: "Asia/Tokyo", gender: "women", home: "Japan",         away: "Brazil",   venue: "Asue Arena Osaka"}
+  - {date: "2026-07-09", time: "19:20", tz: "Asia/Tokyo", gender: "women", home: "Japan",         away: "Thailand", venue: "Asue Arena Osaka"}
+  - {date: "2026-07-11", time: "19:20", tz: "Asia/Tokyo", gender: "women", home: "Japan",         away: "Turkey",   venue: "Asue Arena Osaka"}
+  - {date: "2026-07-12", time: "19:20", tz: "Asia/Tokyo", gender: "women", home: "Japan",         away: "Poland",   venue: "Asue Arena Osaka"}
+  # 其他 Pool 9 女排場次含 Brazil：
+  - {date: "2026-07-10", time: "19:20", tz: "Asia/Tokyo", gender: "women", home: "Poland",        away: "Brazil",   venue: "Asue Arena Osaka"}
+  - {date: "2026-07-11", time: "15:30", tz: "Asia/Tokyo", gender: "women", home: "Thailand",      away: "Brazil",   venue: "Asue Arena Osaka"}
+  - {date: "2026-07-12", time: "12:00", tz: "Asia/Tokyo", gender: "women", home: "United States", away: "Brazil",   venue: "Asue Arena Osaka"}
+
+  # ================ 男排 Week 3: 7/15-7/19 ================
+  # Pool 9 (Osaka, Japan, UTC+9)
+  - {date: "2026-07-15", time: "19:20", tz: "Asia/Tokyo", gender: "men", home: "Japan", away: "Italy",     venue: "Asue Arena Osaka"}
+  - {date: "2026-07-16", time: "19:20", tz: "Asia/Tokyo", gender: "men", home: "Japan", away: "Canada",    venue: "Asue Arena Osaka"}
+  - {date: "2026-07-17", time: "19:20", tz: "Asia/Tokyo", gender: "men", home: "Japan", away: "Belgium",   venue: "Asue Arena Osaka"}
+  - {date: "2026-07-19", time: "19:20", tz: "Asia/Tokyo", gender: "men", home: "Japan", away: "Argentina", venue: "Asue Arena Osaka"}
