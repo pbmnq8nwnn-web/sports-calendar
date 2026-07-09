@@ -542,6 +542,95 @@ def fetch_worldcup(cfg):
     return events
 
 
+# ---------------- VNL (Volleyball Nations League) ----------------
+
+# 排球國家名中文對照（重用 WC_ZH 已有的，再補常見排球隊）
+VNL_ZH_EXTRA = {
+    "United States": "美國", "Dominican Republic": "多明尼加",
+    "Czech Republic": "捷克", "Netherlands": "荷蘭", "Poland": "波蘭",
+    "Bulgaria": "保加利亞", "Italy": "義大利", "Turkey": "土耳其",
+    "Serbia": "塞爾維亞", "Slovenia": "斯洛維尼亞", "Ukraine": "烏克蘭",
+    "Iran": "伊朗", "China": "中國", "Cuba": "古巴",
+    "Belgium": "比利時", "Argentina": "阿根廷", "France": "法國",
+    "Germany": "德國", "Canada": "加拿大", "Brazil": "巴西",
+    "Japan": "日本", "Thailand": "泰國", "Australia": "澳洲",
+}
+
+
+def _vnl_zh(name):
+    return VNL_ZH_EXTRA.get(name, WC_ZH.get(name, name))
+
+
+def fetch_vnl(cfg):
+    """讀 data/vnl_{season}.yaml，依 teams 過濾出關心的場次。"""
+    if not cfg.get("enabled"):
+        return []
+
+    season = cfg.get("season", 2026)
+    data_path = ROOT / "data" / f"vnl_{season}.yaml"
+    if not data_path.exists():
+        log.warning("VNL data file not found: %s", data_path)
+        return []
+
+    try:
+        data = yaml.safe_load(data_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        log.error("VNL data parse failed: %s", e)
+        return []
+
+    men_teams = set(cfg.get("teams", {}).get("men", []) or [])
+    women_teams = set(cfg.get("teams", {}).get("women", []) or [])
+
+    events = []
+    seen_uids = set()
+    for m in data.get("matches", []) or []:
+        gender = m.get("gender", "").lower()
+        home = m.get("home", "")
+        away = m.get("away", "")
+        selected = men_teams if gender == "men" else women_teams
+        if home not in selected and away not in selected:
+            continue
+
+        # Parse local time and convert to UTC
+        tz_name = m.get("tz", "UTC")
+        try:
+            tz = ZoneInfo(tz_name)
+            local_dt = datetime.fromisoformat(f"{m['date']}T{m['time']}").replace(tzinfo=tz)
+            start_utc = local_dt.astimezone(UTC)
+        except Exception as e:
+            log.warning("VNL time parse failed for %s vs %s (%s): %s", home, away, m.get("date"), e)
+            continue
+
+        zh_home = _vnl_zh(home)
+        zh_away = _vnl_zh(away)
+        gender_zh = "男排" if gender == "men" else "女排"
+
+        # 把選擇的隊伍放前面，方便識別
+        if away in selected and home not in selected:
+            summary = f"🏐 VNL {gender_zh}｜{zh_away} vs {zh_home}"
+        elif home in selected and away not in selected:
+            summary = f"🏐 VNL {gender_zh}｜{zh_home} vs {zh_away}"
+        else:
+            # 兩隊都是選擇的（例如 日本 vs 巴西）
+            summary = f"🏐 VNL {gender_zh}｜{zh_home} vs {zh_away}"
+
+        venue = m.get("venue", "")
+        uid = make_uid("vnl", season, gender, m["date"], m["time"], home, away)
+        if uid in seen_uids:
+            continue
+        seen_uids.add(uid)
+
+        events.append(make_event(
+            uid, start_utc, 150,  # ~2.5h
+            summary,
+            location=venue,
+            description=f"{home} vs {away}",
+        ))
+
+    log.info("VNL: %d events", len(events))
+    return events
+
+
 # ---------------- Main ----------------
 
 def main():
@@ -565,6 +654,7 @@ def main():
     all_events += fetch_nba(cfg.get("nba", {}))
     all_events += fetch_f1(cfg.get("f1", {}))
     all_events += fetch_worldcup(cfg.get("worldcup", {}))
+    all_events += fetch_vnl(cfg.get("vnl", {}))
 
     for ev in all_events:
         cal.add_component(ev)
