@@ -13,22 +13,27 @@ nba:
 
 mlb:
   enabled: true
+  # 只有 tracked_players 出賽的場次才會出現在行事曆（其餘場次不顯示）
+  # teams 是抓資料範圍：新增追蹤球員時，記得把他所屬的球隊也加進這裡，
+  # 否則系統根本不會去抓他球隊的賽程，永遠偵測不到他出賽
   # MLB team id 對照: dodgers=119, yankees=147, astros=117, tigers=116,
   # padres=135, redsox=111, mets=121, braves=144, phillies=143
   teams:
     - { id: 119, name: "Los Angeles Dodgers", zh: "道奇" }
-    - { id: 147, name: "New York Yankees", zh: "洋基" }
     - { id: 117, name: "Houston Astros", zh: "太空人" }
     - { id: 116, name: "Detroit Tigers", zh: "老虎" }
-  # 追蹤特定選手出賽：命中時在 summary 後綴 🎯名字
+    - { id: 111, name: "Boston Red Sox", zh: "紅襪" }
+  # 追蹤特定選手出賽：只有命中才會產生事件，summary 後綴 🎯名字
   # track: "pitcher" 用 probablePitcher（投手先發資訊，遠期都能拿到）
-  # track: "lineup"  用 lineups（野手陣容，只在賽前數小時才有）
+  # track: "lineup"  用 lineups（野手陣容，只在賽前數小時才有，命中時間點較晚）
+  # track: "both"    投手＋打者都查（用於兩刀流球員）
   tracked_players:
-    - { id: 660271, zh: "大谷翔平", track: "pitcher" }
+    - { id: 660271, zh: "大谷翔平", track: "both" }
     - { id: 808967, zh: "山本由伸", track: "pitcher" }
     - { id: 808963, zh: "佐佐木朗希", track: "pitcher" }
     - { id: 701678, zh: "李灝宇", track: "lineup" }
     - { id: 678906, zh: "鄧愷威", track: "pitcher" }
+    - { id: 691907, zh: "鄭宗哲", track: "lineup" }
 
 f1:
   enabled: true

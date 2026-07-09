@@ -2,8 +2,8 @@ name: Update Sports Calendar
 
 on:
   schedule:
-    # 每天 UTC 16:00（台北 00:00）執行一次
-    - cron: "0 16 * * *"
+    # 每 3 小時跑一次，接住打線公布（賽前 2~3 小時才有）的時間差
+    - cron: "0 */3 * * *"
   workflow_dispatch:  # 手動觸發
   push:
     branches: [main]
@@ -69,19 +69,14 @@ jobs:
             echo "changed=true" >> $GITHUB_OUTPUT
           fi
 
-      - name: Notify Telegram on success (daily summary)
-        if: success() && env.TELEGRAM_BOT_TOKEN != ''
+      - name: Notify Telegram on success (only when changed)
+        if: success() && steps.commit.outputs.changed == 'true' && env.TELEGRAM_BOT_TOKEN != ''
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           EVENT_COUNT: ${{ steps.validate.outputs.event_count }}
-          CHANGED: ${{ steps.commit.outputs.changed }}
         run: |
-          if [ "$CHANGED" = "true" ]; then
-            MSG="✅ Sports Calendar 已更新：${EVENT_COUNT} 場賽事"
-          else
-            MSG="✅ Sports Calendar 檢查完成（${EVENT_COUNT} 場，本次無新異動）"
-          fi
+          MSG="✅ Sports Calendar 已更新：${EVENT_COUNT} 場賽事"
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
             -d text="${MSG}" \

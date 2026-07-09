@@ -90,6 +90,7 @@ def fetch_mlb(cfg, season_year):
     start = f"{season_year}-03-01"
     end = f"{season_year}-11-15"
 
+    skipped = 0
     for tid in team_ids:
         try:
             params = {
@@ -149,8 +150,12 @@ def fetch_mlb(cfg, season_year):
                             if zh not in matched:
                                 matched.append(zh)
 
-                if matched:
-                    summary += "  🎯" + "、".join(matched)
+                # 只有追蹤球員有出賽（先發投手命中，或打線已公布且命中）才收進行事曆
+                if not matched:
+                    skipped += 1
+                    continue
+
+                summary += "  🎯" + "、".join(matched)
 
                 venue = g.get("venue", {}).get("name", "")
                 uid = make_uid("mlb", game_pk)
@@ -169,7 +174,7 @@ def fetch_mlb(cfg, season_year):
         if u not in seen:
             seen.add(u)
             uniq.append(ev)
-    log.info("MLB: %d events", len(uniq))
+    log.info("MLB: %d events (%d games skipped, no tracked player matched)", len(uniq), skipped)
     return uniq
 
 
