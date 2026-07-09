@@ -1,19 +1,20 @@
 # Sports Calendar 訂閱
 
-自動產生 NBA、MLB、F1、世界杯賽程的 `.ics` 訂閱檔，讓 Apple 行事曆（或任何支援 ICS 的行事曆）自動同步。
+自動產生 NBA、MLB、F1、世界杯、VNL（世界排球聯賽）賽程的 `.ics` 訂閱檔，讓 Apple 行事曆（或任何支援 ICS 的行事曆）自動同步。
 
-支援指定球隊過濾（例如只看湖人、馬刺、道奇等）。資料來源：MLB Stats API、ESPN、Jolpica/Ergast F1 API。
+支援指定球隊過濾（例如只看湖人、馬刺、道奇等）；MLB 另外支援「只顯示追蹤球員出賽的場次」。資料來源：MLB Stats API、ESPN、Jolpica/Ergast F1 API。
 
 > 本專案是公開模板，使用者可以 Fork 後自行設定。詳見下方「安全性說明」。
 
 ## 功能
 
-- ⚾ MLB：指定球隊全季賽程（含春訓 / 季後賽）
+- ⚾ MLB：可設定「追蹤球員」，只有這些球員出賽的場次才會出現在行事曆（先發投手／打線命中皆可），不指定球員時則顯示指定球隊全季賽程（含春訓 / 季後賽）
 - 🏀 NBA：指定球隊（例行賽 + 季後賽，自動跨季）
 - 🏎️ F1：依場次類型過濾（FP1/FP2/FP3/Q/Sprint/Race）
+- 🏐 VNL：世界排球聯賽，男排 / 女排各自指定追蹤國家
 - ⚽ World Cup 2026：指定國家小組賽 + 可選全部淘汰賽
 - 時間自動轉成你的時區（預設台北 UTC+8）
-- GitHub Actions 每天自動更新
+- GitHub Actions 每 3 小時自動更新一次
 
 ## 安全性說明
 
@@ -45,6 +46,10 @@ mlb:
   enabled: true
   teams:
     - { id: 119, name: "Los Angeles Dodgers", zh: "道奇" }
+  # 選填：只追蹤特定球員出賽的場次（不設定就顯示 teams 全部賽程）
+  # track: "pitcher"（先發投手）/ "lineup"（打線，賽前數小時才有）/ "both"（兩刀流）
+  tracked_players:
+    - { id: 660271, zh: "大谷翔平", track: "both" }
 
 f1:
   enabled: true
@@ -55,6 +60,16 @@ f1:
     sprint_qualifying: true
     sprint: true
 
+vnl:
+  enabled: true
+  season: 2026
+  teams:
+    men:
+      - "Japan"
+    women:
+      - "Japan"
+      - "Brazil"
+
 worldcup:
   enabled: true
   teams:
@@ -64,6 +79,8 @@ worldcup:
 ```
 
 球隊 ID 對照見下方表格。
+
+> ⚠️ **設定 `tracked_players` 時要注意**：`teams` 是抓資料的範圍，追蹤球員所屬的球隊一定要在 `teams` 清單裡，不然系統根本不會去抓他的比賽，永遠偵測不到他出賽。
 
 ### 3. 啟用 Actions 寫入權限
 Repo → **Settings** → **Actions** → **General** → 最下面 **Workflow permissions** → 選 **Read and write permissions** → **Save**。
@@ -148,13 +165,13 @@ python generate.py
 
 ## 排程
 
-預設每天 UTC 16:00（台北 00:00）自動跑。修改 `.github/workflows/update-calendar.yml` 的 cron 可調整。
+預設每 3 小時自動跑一次（`cron: "0 */3 * * *"`）。之所以比「每天一次」密，是為了接住 MLB 打線名單（賽前 2~3 小時才公布）這種時效較短的資料——如果只追蹤先發投手，其實每天一次就夠了。修改 `.github/workflows/update-calendar.yml` 的 cron 可調整頻率。
 
 ## 監控與通知（可選）
 
 Workflow 內建：
 - **事件數驗證**：產出 `.ics` 如果 < 100 筆，自動視為失敗（防止 ESPN 暫時掛掉但 workflow 卻成功）
-- **Telegram 推送**：失敗時即時通知；成功時推每日摘要（含事件數）
+- **Telegram 推送**：失敗時即時通知；成功且 `.ics` 有實際變動時才推播（避免每 3 小時跑一次卻洗版「檢查完成、無異動」的訊息）
 
 ### 啟用 Telegram 通知
 
