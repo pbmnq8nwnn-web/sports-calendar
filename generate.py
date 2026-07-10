@@ -4,10 +4,12 @@ Sports Calendar Generator
 抓取 NBA / MLB / F1 / 世界杯賽程，依 config.yaml 過濾指定球隊，
 輸出 docs/sports.ics 供 Apple 行事曆訂閱。
 """
+import os
 import sys
 import uuid
 import hashlib
 import logging
+from collections import defaultdict
 from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
 from pathlib import Path
@@ -20,8 +22,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 log = logging.getLogger("sports-cal")
 
 UTC = ZoneInfo("UTC")
+TAIPEI = ZoneInfo("Asia/Taipei")
 ROOT = Path(__file__).parent
 OUT_PATH = ROOT / "docs" / "sports.ics"
+DIFF_SUMMARY_CHAR_LIMIT = 3500
+DIFF_SUMMARY_SUFFIX_RESERVE = 80  # 保留給結尾「...還有 N 場」提示句的預算，避免加總後超過上限
 
 SESSION = requests.Session()
 SESSION.headers.update({
@@ -40,7 +45,9 @@ def make_uid(*parts) -> str:
 def make_event(uid, start_utc, duration_min, summary, location="", description=""):
     ev = Event()
     ev.add("uid", uid)
-    ev.add("dtstamp", datetime.now(UTC))
+    # DTSTAMP 固定用比賽開始時間（而非 datetime.now()），讓輸出成為賽事資料的
+    # 純函數：同樣資料永遠產生同樣的 .ics 內容，避免每次執行都被判定「有變更」。
+    ev.add("dtstamp", start_utc)
     ev.add("dtstart", start_utc)
     ev.add("dtend", start_utc + timedelta(minutes=duration_min))
     ev.add("summary", summary)
@@ -636,6 +643,193 @@ def fetch_vnl(cfg):
     return events
 
 
+# ---------------- Diff / Change summary ----------------
+#
+# docs/sports.ics 現在是賽事資料的純函數（DTSTAMP 固定＝賽事開始時間），
+# 所以 git diff 本身已經不會再有假陽性。但我們仍然想要一段「人類可讀」的
+# 異動摘要給 Telegram 通知用，所以在覆寫檔案之前，比對新舊兩份 ics 的內容，
+# 產生新增 / 異動 / 移除清單，寫到 diff_summary.txt。
+
+
+def _uid_of(ev):
+    v = ev.get("uid")
+    return str(v) if v is not None else None
+
+
+def _normalize_dt(value):
+    """把 icalendar 解析出來的 datetime（可能 naive、可能不同 tzinfo 實作）
+    統一轉成 UTC-aware datetime 再比較，避免時區表示法不同造成假陽性。"""
+    if value is None:
+        return None
+    dt = getattr(value, "dt", value)
+    if isinstance(dt, datetime):
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=UTC)
+        return dt.astimezone(UTC)
+    return dt  # 純 date（理論上這個專案不會用到）
+
+
+def _event_fields(ev):
+    """取出除了 DTSTAMP 以外的全部欄位，欄位不存在一律用 None 表示。"""
+
+    def _str(key):
+        v = ev.get(key)
+        return str(v) if v is not None else None
+
+    def _dt(key):
+        v = ev.get(key)
+        if v is None:
+            return None
+        return _normalize_dt(v.dt)
+
+    return {
+        "summary": _str("summary"),
+        "dtstart": _dt("dtstart"),
+        "dtend": _dt("dtend"),
+        "location": _str("location"),
+        "description": _str("description"),
+    }
+
+
+def load_old_calendar():
+    """讀現有的 docs/sports.ics。不存在就當作舊檔是空的（全部算新增）。"""
+    try:
+        raw = OUT_PATH.read_bytes()
+    except FileNotFoundError:
+        return None
+    try:
+        return Calendar.from_ical(raw)
+    except Exception as e:
+        log.warning("Failed to parse existing %s, treat as empty: %s", OUT_PATH, e)
+        return None
+
+
+def build_fields_map(events):
+    result = {}
+    for ev in events:
+        uid = _uid_of(ev)
+        if uid is None:
+            continue
+        result[uid] = _event_fields(ev)
+    return result
+
+
+def compute_diff(old_fields, new_fields):
+    old_uids = set(old_fields)
+    new_uids = set(new_fields)
+    added = sorted(new_uids - old_uids)
+    removed = sorted(old_uids - new_uids)
+    changed = sorted(
+        uid for uid in (old_uids & new_uids)
+        if old_fields[uid] != new_fields[uid]
+    )
+    return added, removed, changed
+
+
+def pair_vnl_reschedules(added, removed, old_fields, new_fields):
+    """VNL 的 UID 含比賽日期時間，改期會讓 UID 整個換掉，變成「移除一場+
+    新增一場」。這裡把兩邊都是 VNL、且 SUMMARY 球隊組合相同的配對挑出來，
+    合併成一則「改期」訊息。其他運動用穩定 ID（game_pk / event_id / round_no /
+    ev_id），不會有這個問題，不需要處理。"""
+    removed_pool = defaultdict(list)
+    for uid in removed:
+        summ = old_fields[uid]["summary"] or ""
+        if summ.startswith("🏐 VNL"):
+            removed_pool[summ].append(uid)
+
+    rescheduled = []  # (old_uid, new_uid, summary)
+    consumed_added = set()
+    consumed_removed = set()
+    for uid in added:
+        summ = new_fields[uid]["summary"] or ""
+        if not summ.startswith("🏐 VNL"):
+            continue
+        pool = removed_pool.get(summ)
+        if pool:
+            old_uid = pool.pop(0)
+            rescheduled.append((old_uid, uid, summ))
+            consumed_added.add(uid)
+            consumed_removed.add(old_uid)
+
+    added_remaining = [u for u in added if u not in consumed_added]
+    removed_remaining = [u for u in removed if u not in consumed_removed]
+    return added_remaining, removed_remaining, rescheduled
+
+
+def _fmt_dt(dt):
+    if dt is None:
+        return "?"
+    return dt.astimezone(TAIPEI).strftime("%Y-%m-%d %H:%M")
+
+
+def build_diff_message(added, removed, changed, rescheduled, old_fields, new_fields):
+    # entries: (is_item, text)。is_item=False 是段落標題，不計入「場」數。
+    entries = []
+
+    if rescheduled:
+        entries.append((False, f"🔄 改期 {len(rescheduled)} 場："))
+        for old_uid, new_uid, summ in rescheduled:
+            old_dt = _fmt_dt(old_fields[old_uid]["dtstart"])
+            new_dt = _fmt_dt(new_fields[new_uid]["dtstart"])
+            entries.append((True, f"  {summ}：{old_dt} → {new_dt}"))
+
+    if changed:
+        entries.append((False, f"✏️ 異動 {len(changed)} 場："))
+        for uid in changed:
+            summ = new_fields[uid]["summary"] or "?"
+            dt = _fmt_dt(new_fields[uid]["dtstart"])
+            entries.append((True, f"  {summ}（{dt}）"))
+
+    if added:
+        entries.append((False, f"🆕 新增 {len(added)} 場："))
+        for uid in added:
+            summ = new_fields[uid]["summary"] or "?"
+            dt = _fmt_dt(new_fields[uid]["dtstart"])
+            entries.append((True, f"  {summ}（{dt}）"))
+
+    if removed:
+        entries.append((False, f"🗑️ 移除 {len(removed)} 場："))
+        for uid in removed:
+            summ = old_fields[uid]["summary"] or "?"
+            dt = _fmt_dt(old_fields[uid]["dtstart"])
+            entries.append((True, f"  {summ}（{dt}）"))
+
+    if not entries:
+        return "本次無異動。"
+
+    total_items = sum(1 for is_item, _ in entries if is_item)
+    full_text = "\n".join(t for _, t in entries)
+    if len(full_text) <= DIFF_SUMMARY_CHAR_LIMIT:
+        return full_text
+
+    kept_lines = []
+    kept_items = 0
+    cur_len = 0
+    budget = DIFF_SUMMARY_CHAR_LIMIT - DIFF_SUMMARY_SUFFIX_RESERVE
+    for is_item, t in entries:
+        add_len = len(t) + (1 if kept_lines else 0)
+        if cur_len + add_len > budget:
+            break
+        kept_lines.append(t)
+        cur_len += add_len
+        if is_item:
+            kept_items += 1
+
+    remaining = total_items - kept_items
+    kept_lines.append(
+        f"...（還有 {remaining} 場，內容過長未列出，完整清單看 GitHub commit diff）"
+    )
+    return "\n".join(kept_lines)
+
+
+def write_diff_summary(text):
+    runner_temp = os.environ.get("RUNNER_TEMP", "/tmp")
+    out = Path(runner_temp) / "diff_summary.txt"
+    out.write_text(text, encoding="utf-8")
+    log.info("Diff summary written to %s (%d chars)", out, len(text))
+    return out
+
+
 # ---------------- Main ----------------
 
 def main():
@@ -644,6 +838,11 @@ def main():
 
     tz_name = cfg.get("timezone", "Asia/Taipei")
     log.info("Display timezone: %s (events stored as UTC, Apple Calendar will convert)", tz_name)
+
+    # 寫檔之前先讀舊的 .ics，供產生異動摘要用
+    old_cal = load_old_calendar()
+    old_events = old_cal.walk("VEVENT") if old_cal is not None else []
+    old_fields = build_fields_map(old_events)
 
     cal = Calendar()
     cal.add("prodid", "-//Sports Calendar//ZH-TW//")
@@ -663,6 +862,17 @@ def main():
 
     for ev in all_events:
         cal.add_component(ev)
+
+    # 比對新舊內容，產生異動摘要（不影響是否寫檔——永遠正常覆寫）
+    new_fields = build_fields_map(all_events)
+    added, removed, changed = compute_diff(old_fields, new_fields)
+    added, removed, rescheduled = pair_vnl_reschedules(added, removed, old_fields, new_fields)
+    diff_msg = build_diff_message(added, removed, changed, rescheduled, old_fields, new_fields)
+    write_diff_summary(diff_msg)
+    log.info(
+        "Diff: %d added, %d removed, %d changed, %d rescheduled",
+        len(added), len(removed), len(changed), len(rescheduled),
+    )
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_bytes(cal.to_ical())

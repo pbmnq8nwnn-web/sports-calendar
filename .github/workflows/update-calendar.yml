@@ -76,10 +76,15 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           EVENT_COUNT: ${{ steps.validate.outputs.event_count }}
         run: |
-          MSG="✅ Sports Calendar 已更新：${EVENT_COUNT} 場賽事"
+          DIFF_SUMMARY=""
+          if [ -f "${RUNNER_TEMP}/diff_summary.txt" ]; then
+            DIFF_SUMMARY=$(cat "${RUNNER_TEMP}/diff_summary.txt")
+          fi
+          MSG="✅ Sports Calendar 已更新：${EVENT_COUNT} 場賽事
+          ${DIFF_SUMMARY}"
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
-            -d text="${MSG}" \
+            --data-urlencode "text=${MSG}" \
             -d disable_notification=true > /dev/null
 
       - name: Notify Telegram on failure
@@ -93,4 +98,4 @@ jobs:
           Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
-            -d text="${MSG}" > /dev/null
+            --data-urlencode "text=${MSG}" > /dev/null
