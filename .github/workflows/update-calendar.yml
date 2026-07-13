@@ -74,13 +74,12 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          EVENT_COUNT: ${{ steps.validate.outputs.event_count }}
         run: |
           DIFF_SUMMARY=""
           if [ -f "${RUNNER_TEMP}/diff_summary.txt" ]; then
             DIFF_SUMMARY=$(cat "${RUNNER_TEMP}/diff_summary.txt")
           fi
-          MSG="✅ Sports Calendar 已更新：${EVENT_COUNT} 場賽事
+          MSG="✅ Sports Calendar 已更新
           ${DIFF_SUMMARY}"
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \

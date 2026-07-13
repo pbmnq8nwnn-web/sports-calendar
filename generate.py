@@ -212,10 +212,16 @@ def fetch_nba(cfg):
     seasons = [today.year, today.year + 1] if today.month >= 7 else [today.year - 1, today.year]
     seasontypes = [2, 3]  # 例行賽 + 季後賽（預設不抓季前賽，避免雜訊）
 
+    # 25-26 賽季（ESPN season=2026）Leo 只想留季後賽（含附加賽 Play-In）紀錄，
+    # 不留例行賽；26-27 賽季（season=2027）起維持抓全部賽程。
+    # season=2026 之後會自然滑出兩季視窗（見上方 seasons 計算），不用手動清掉這行。
+    NBA_POSTSEASON_ONLY_SEASON = 2026
+
     for team in cfg["teams"]:
         tid = team["id"]
         for season in seasons:
-            for stype in seasontypes:
+            stypes = [3] if season == NBA_POSTSEASON_ONLY_SEASON else seasontypes
+            for stype in stypes:
                 url = f"https://site.web.api.espn.com/apis/site/v2/sports/basketball/nba/teams/{tid}/schedule"
                 try:
                     data = fetch_json(url, params={"season": season, "seasontype": stype})
