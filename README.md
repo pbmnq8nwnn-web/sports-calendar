@@ -190,6 +190,16 @@ Workflow 內建：
 
 Workflow 失敗時 GitHub 預設會寄 email 到你的帳號 email（前提是 Settings → Notifications 把 Actions 那欄打勾）。
 
+## HYROX 開賣監控（獨立模組）
+
+`hyrox/monitor.py` + `.github/workflows/hyrox-monitor.yml`：監控 HYROX 場次官網，開放報名的瞬間發 Telegram 通知（含可直接點的購票按鈕）。與上面的行事曆功能互相獨立，共用同一組 Telegram secrets。
+
+- **判斷方式**：雙訊號——官網「Ticket sales start soon!」字樣消失 + 購票連結出現，兩者都成立才判定開賣
+- **三級通知**：🔥 開賣（附購票連結）／⏰ 頁面異動（可能公告了開賣時間，之後 72 小時內升頻為每 5 分鐘緊盯）／⚠️ 監控失靈（連續抓取失敗，大聲求救而不是默默躺平）
+- **節流**：排程每 5 分鐘喚醒，平常自我節流成 30 分鐘實際檢查一次
+- **新增場次**：在 `hyrox/monitor.py` 的 `TARGETS` 清單加一筆（id、名稱、場次頁網址、官網網域）即可，判斷與通知邏輯自動套用
+- **本機測試**：`python3 hyrox/monitor.py --selftest`（用開賣中場次驗證判斷函式）、`--dry-run`（檢查但不發訊息）、`--test`（發 3 則樣本訊息驗格式）
+
 ## 授權
 
 MIT License。詳見 [LICENSE](LICENSE)。
