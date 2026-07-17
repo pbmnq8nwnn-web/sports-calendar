@@ -48,21 +48,21 @@ jobs:
           pip install -r requirements.txt
 
       - name: 執行監控（normal，排程或手動預設模式）
-        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.mode == 'normal' || github.event.inputs.mode == ''))
+        if: github.event_name == 'push' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.mode == 'normal' || github.event.inputs.mode == ''))
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python hyrox/monitor.py
 
       - name: 執行監控（test，手動觸發用來驗證訊息格式）
-        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'test')
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'test'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python hyrox/monitor.py --test
 
       - name: 執行監控（selftest，手動觸發用來驗證開賣判斷函式）
-        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'selftest')
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'selftest'
         run: python hyrox/monitor.py --selftest
 
       - name: state.json 有變動才 commit + push
