@@ -50,16 +50,6 @@ FAILURE_REMIND_HOURS = 24
 # 監控目標。台灣站的購票連結可能出現在事件頁或 /tickets/ 輔助頁，兩頁都抓。
 TARGETS = [
     {
-        # 【演習用，測完移除】千葉場已在開賣中，用來實彈驗證 🔥 開賣通知全流程
-        "id": "hyrox_chiba_rehearsal",
-        "name": "HYROX Chiba 2026（8/7–9）【演習】",
-        "event_page": "https://hyroxjapan.com/event/hyrox-chiba/",
-        "pages": [
-            "https://hyroxjapan.com/event/hyrox-chiba/",
-        ],
-        "own_domains": ["hyroxjapan.com"],
-    },
-    {
         "id": "hyrox_taipei_2027",
         "name": "HYROX Taipei 2027（3/12–14）",
         "event_page": "https://hyroxtaiwan.com/event/hyrox-taipei/",

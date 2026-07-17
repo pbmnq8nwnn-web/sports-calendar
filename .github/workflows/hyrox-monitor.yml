@@ -1,9 +1,6 @@
 name: HYROX 開賣監控
 
 on:
-  # 【暫時】分支雲端驗證用：push 到功能分支就跑 test + selftest，合併前移除這段
-  push:
-    branches: [feat/hyrox-monitor]
   schedule:
     # 每 5 分鐘喚醒一次；腳本內部會自我節流成 30 分鐘才真的檢查一次，
     # 除非進入「熱區」（偵測到異動後 72 小時內）才會每次喚醒都真的檢查。
@@ -48,7 +45,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: 執行監控（normal，排程或手動預設模式）
-        if: github.event_name == 'push' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.mode == 'normal' || github.event.inputs.mode == ''))
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.mode == 'normal' || github.event.inputs.mode == ''))
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -66,8 +63,7 @@ jobs:
         run: python hyrox/monitor.py --selftest
 
       - name: state.json 有變動才 commit + push
-        # push（分支測試）事件不 commit，避免測試污染 state
-        if: always() && github.event_name != 'push'
+        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
