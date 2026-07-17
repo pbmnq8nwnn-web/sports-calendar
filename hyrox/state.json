@@ -1,0 +1,23 @@
+{
+  "_meta": {
+    "last_check": "2026-07-17T16:01:26.265533+08:00"
+  },
+  "hyrox_taipei_2027": {
+    "notified_open": false,
+    "last_ticket_hash": "3d3f12bd2660ef6a7bc7b504264a2bb403bf06fa777b87d74a02502710c0dc77",
+    "notified_hash": null,
+    "hot_until": null,
+    "fail_streak": 0,
+    "fail_notified": false,
+    "last_fail_notified_at": null
+  },
+  "hyrox_nagoya_2027": {
+    "notified_open": false,
+    "last_ticket_hash": "2128bb9cf0f407ad2d3f661c650e6238380ca171c60167ddd5d393ef59146639",
+    "notified_hash": null,
+    "hot_until": null,
+    "fail_streak": 0,
+    "fail_notified": false,
+    "last_fail_notified_at": null
+  }
+}

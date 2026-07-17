@@ -1,0 +1,85 @@
+name: HYROX 開賣監控
+
+on:
+  schedule:
+    # 每 5 分鐘喚醒一次；腳本內部會自我節流成 30 分鐘才真的檢查一次，
+    # 除非進入「熱區」（偵測到異動後 72 小時內）才會每次喚醒都真的檢查。
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "執行模式：normal（正常檢查）/ test（發 3 則樣本訊息）/ selftest（驗證開賣判斷函式）"
+        required: false
+        default: "normal"
+        type: choice
+        options:
+          - normal
+          - test
+          - selftest
+
+# 防止 cron 密集喚醒時同時跑兩份（例如上一次還沒跑完下一次又觸發），
+# 新的執行會排隊等候，而不是把還在寫 state.json 的舊執行砍掉。
+concurrency:
+  group: hyrox-monitor
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 執行監控（normal，排程或手動預設模式）
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.mode == 'normal' || github.event.inputs.mode == ''))
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python hyrox/monitor.py
+
+      - name: 執行監控（test，手動觸發用來驗證訊息格式）
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'test'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python hyrox/monitor.py --test
+
+      - name: 執行監控（selftest，手動觸發用來驗證開賣判斷函式）
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'selftest'
+        run: python hyrox/monitor.py --selftest
+
+      - name: state.json 有變動才 commit + push
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add hyrox/state.json
+          if git diff --staged --quiet; then
+            echo "state.json 沒有變動，不 commit。"
+            exit 0
+          fi
+          git commit -m "chore: update hyrox monitor state ($(date -u +%Y-%m-%dT%H:%MZ))"
+          # 這個 repo 另有 update-calendar.yml 排程也會 commit，
+          # push 前先 pull --rebase 防止撞車，失敗重試幾次。
+          for i in 1 2 3; do
+            if git pull --rebase origin main && git push; then
+              echo "push 成功"
+              break
+            fi
+            echo "push 失敗，5 秒後重試 ($i/3)..."
+            sleep 5
+          done
