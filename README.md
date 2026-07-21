@@ -63,6 +63,9 @@ f1:
 vnl:
   enabled: true
   season: 2026
+  tournaments:      # 官網 API 賽事編號（男排 / 女排），換屆時更新
+    men: 1661
+    women: 1662
   teams:
     men:
       - "Japan"
@@ -190,14 +193,14 @@ Workflow 內建：
 
 Workflow 失敗時 GitHub 預設會寄 email 到你的帳號 email（前提是 Settings → Notifications 把 Actions 那欄打勾）。
 
-## VNL Finals 對戰自動同步
+## VNL 資料源（官網 API）
 
-VNL（世界排球聯賽）決賽週期（8 強～冠軍賽）的對手要等前一輪打完才知道，`data/vnl_{season}.yaml` 沒辦法像小組賽一樣提前整理好，以前只能人工盯著 Wikipedia 手動補。`vnl_finals_sync.py` 會在賽事日期窗口內自動讀該屆賽事 Wikipedia 頁面的 wikitext（比渲染後的網頁更新更快、格式更穩定），解析已確定對手的場次，補進 `data/vnl_{season}.yaml`，讓既有每 3 小時一次的排程自動接手（重新產生 `.ics` → commit → TG 通知），不用另外開 workflow。
+VNL（世界排球聯賽）的小組賽與決賽週（8 強～冠軍賽）全部直接打排球世界官網的 API 取得，`generate.py` 每次執行都撈一次最新賽程，依 `config.yaml` 追蹤的隊伍過濾。決賽對手一旦官網確定，下一次排程（每 3 小時）就會自動抓到，不用手動維護賽程檔、也不用等賽事日期窗口。
 
-- **只在窗口內動作**：日期窗口寫在 `vnl_finals_sync.py` 的 `FINALS_EVENTS`，非賽事期間完全不會發 HTTP 請求
-- **防呆**：抓到的隊伍代碼如果不在賽前就已知的 8 強名單內，視為異常直接跳過、記警告，不會誤寫進行事曆
-- **失敗保護**：Wikipedia 抓取或解析失敗只記警告、不中斷整個 workflow（NBA/MLB/F1 等其他賽事照常執行）
-- **每年要手動更新一次**：VNL 每年主辦城市、場館、晉級隊伍都不同，`FINALS_EVENTS`（日期窗口、場館名、8 強名單）需要在每年 Finals 開打前手動改一次——跟 `data/vnl_2026.yaml` 本身一樣，是有意設計成部分手動維護的
+- **一支 API 全包**：`GET /api/v1/volley-tournament/{起日}/{迄日}/{男;女賽事編號}`，回傳含 UTC 時間、性別、輪次、對戰隊伍的 JSON
+- **對手未定自動略過**：官網標記 `isMatchTBD`（如四強對手還沒出爐）的場次先跳過，等確定了下次自動補上
+- **失敗保護**：API 抓取失敗只記警告、不中斷整個 workflow（NBA/MLB/F1 等其他賽事照常執行）
+- **每年要更新一次**：賽事編號（男排 / 女排）每屆不同，換屆時到 `config.yaml` 的 `vnl.tournaments` 更新即可——在官網賽程頁的開發者工具 Network 面板找 `/api/v1/volley-tournament/.../{編號}` 就看得到當年的數字
 
 ## HYROX 開賣監控（獨立模組）
 
@@ -218,6 +221,6 @@ MIT License。詳見 [LICENSE](LICENSE)。
 - MLB Stats API：https://statsapi.mlb.com
 - ESPN NBA / World Cup：https://site.api.espn.com
 - F1：https://api.jolpi.ca （Ergast 後繼）
-- VNL：小組賽整理自 Wikipedia（見 `data/vnl_{season}.yaml` 檔頭註解）；Finals 對戰由 `vnl_finals_sync.py` 自動讀 Wikipedia wikitext
+- VNL：排球世界官網 API（https://en.volleyballworld.com/api/v1/volley-tournament ），小組賽＋決賽週皆即時抓取
 
 所有資料源皆為公開 API，本專案不附帶任何賠率 / 博弈資訊。

@@ -18,8 +18,6 @@ import yaml
 import requests
 from icalendar import Calendar, Event
 
-from vnl_finals_sync import sync_vnl_finals
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("sports-cal")
 
@@ -566,9 +564,10 @@ def fetch_worldcup(cfg):
 
 # 排球國家名中文對照（重用 WC_ZH 已有的，再補常見排球隊）
 VNL_ZH_EXTRA = {
-    "United States": "美國", "Dominican Republic": "多明尼加",
+    # 官網 API 的隊名（allTeams[].name）用全稱與部分特殊拼法，這裡都對上
+    "United States": "美國", "USA": "美國", "Dominican Republic": "多明尼加",
     "Czech Republic": "捷克", "Netherlands": "荷蘭", "Poland": "波蘭",
-    "Bulgaria": "保加利亞", "Italy": "義大利", "Turkey": "土耳其",
+    "Bulgaria": "保加利亞", "Italy": "義大利", "Turkey": "土耳其", "Türkiye": "土耳其",
     "Serbia": "塞爾維亞", "Slovenia": "斯洛維尼亞", "Ukraine": "烏克蘭",
     "Iran": "伊朗", "China": "中國", "Cuba": "古巴",
     "Belgium": "比利時", "Argentina": "阿根廷", "France": "法國",
@@ -581,61 +580,97 @@ def _vnl_zh(name):
     return VNL_ZH_EXTRA.get(name, WC_ZH.get(name, name))
 
 
+# 官網 API：一支就把小組賽＋決賽週全包，回傳含 UTC 時間、性別、輪次、對戰的 JSON。
+# 賽事編號（男排 1661 / 女排 1662，2026 賽季）放在 config.yaml 的 vnl.tournaments，
+# 換屆時更新即可（在官網賽程頁的 network 請求 /api/v1/volley-tournament/.../{ids} 看得到）。
+VNL_API_URL = "https://en.volleyballworld.com/api/v1/volley-tournament/{start}/{end}/{ids}"
+
+# 決賽週輪次（pool.name）→ 中文，用來組場地說明
+VNL_ROUND_ZH = {
+    "Quarter-finals": "8 強",
+    "Semi-finals": "4 強",
+    "Final": "冠軍賽",
+    "3rd Place": "季軍賽",
+}
+
+
+def _fetch_vnl_api(season, tournaments):
+    """打官網 API 取整個賽季的 VNL 賽程。抓不到或結構不對就拋例外，交給呼叫端處理。"""
+    ids = f"{tournaments.get('men', 1661)};{tournaments.get('women', 1662)}"
+    url = VNL_API_URL.format(start=f"{season}-06-01", end=f"{season}-08-31", ids=ids)
+    resp = SESSION.get(url, timeout=20)
+    resp.raise_for_status()
+    data = resp.json()
+    if not isinstance(data, dict) or "matches" not in data or "allTeams" not in data:
+        raise ValueError("VNL API 回傳結構非預期（缺 matches/allTeams）")
+    return data
+
+
 def fetch_vnl(cfg):
-    """讀 data/vnl_{season}.yaml，依 teams 過濾出關心的場次。"""
+    """打官網 API 取 VNL 賽程，依 config 追蹤的隊伍過濾出關心的場次。"""
     if not cfg.get("enabled"):
         return []
 
     season = cfg.get("season", 2026)
-    data_path = ROOT / "data" / f"vnl_{season}.yaml"
-    if not data_path.exists():
-        log.warning("VNL data file not found: %s", data_path)
-        return []
+    tournaments = cfg.get("tournaments", {}) or {}
 
     try:
-        data = yaml.safe_load(data_path.read_text(encoding="utf-8"))
+        data = _fetch_vnl_api(season, tournaments)
     except Exception as e:
-        log.error("VNL data parse failed: %s", e)
+        # API 掛掉不讓整支 generate.py 崩（NBA/MLB/F1 還要正常跑）
+        log.warning("VNL API 抓取失敗，本次略過 VNL：%s", e)
         return []
 
+    team_name = {t.get("no"): t.get("name") for t in data.get("allTeams", []) or []}
     men_teams = set(cfg.get("teams", {}).get("men", []) or [])
     women_teams = set(cfg.get("teams", {}).get("women", []) or [])
 
     events = []
     seen_uids = set()
     for m in data.get("matches", []) or []:
-        gender = m.get("gender", "").lower()
-        home = m.get("home", "")
-        away = m.get("away", "")
+        if m.get("isMatchTBD"):
+            continue  # 對手還沒定（如四強），等官網填上下次再抓
+        gender = (m.get("gender") or "").lower()  # API 給 "Men"/"Women"
+        if gender not in ("men", "women"):
+            continue
+        home = team_name.get(m.get("teamANo"))
+        away = team_name.get(m.get("teamBNo"))
+        if not home or not away or home == "TBD" or away == "TBD":
+            continue
+
         selected = men_teams if gender == "men" else women_teams
         if home not in selected and away not in selected:
             continue
 
-        # Parse local time and convert to UTC
-        tz_name = m.get("tz", "UTC")
+        # 開賽時間官網已給 UTC，直接用，不用自己算時區；本地時間只拿來組 UID
         try:
-            tz = ZoneInfo(tz_name)
-            local_dt = datetime.fromisoformat(f"{m['date']}T{m['time']}").replace(tzinfo=tz)
-            start_utc = local_dt.astimezone(UTC)
+            start_utc = datetime.fromisoformat(
+                m["matchDateUtc"].replace("Z", "+00:00")
+            ).astimezone(UTC)
+            local_dt = datetime.fromisoformat(m["matchDateTimeLocal"])
         except Exception as e:
-            log.warning("VNL time parse failed for %s vs %s (%s): %s", home, away, m.get("date"), e)
+            log.warning("VNL 時間解析失敗（%s vs %s）：%s", home, away, e)
             continue
+        local_date = local_dt.strftime("%Y-%m-%d")
+        local_time = local_dt.strftime("%H:%M")
 
         zh_home = _vnl_zh(home)
         zh_away = _vnl_zh(away)
         gender_zh = "男排" if gender == "men" else "女排"
 
-        # 把選擇的隊伍放前面，方便識別
+        # 把追蹤的隊伍放前面，方便識別（兩隊都追時維持 home vs away 原順序）
         if away in selected and home not in selected:
             summary = f"🏐 VNL {gender_zh}｜{zh_away} vs {zh_home}"
-        elif home in selected and away not in selected:
-            summary = f"🏐 VNL {gender_zh}｜{zh_home} vs {zh_away}"
         else:
-            # 兩隊都是選擇的（例如 日本 vs 巴西）
             summary = f"🏐 VNL {gender_zh}｜{zh_home} vs {zh_away}"
 
-        venue = m.get("venue", "")
-        uid = make_uid("vnl", season, gender, m["date"], m["time"], home, away)
+        # 場地：城市 +（決賽週輪次）
+        pool_name = (m.get("pool") or {}).get("name") or ""
+        round_zh = VNL_ROUND_ZH.get(pool_name)
+        city = m.get("city") or ""
+        location = f"{city}（VNL {round_zh}）" if round_zh else city
+
+        uid = make_uid("vnl", season, gender, local_date, local_time, home, away)
         if uid in seen_uids:
             continue
         seen_uids.add(uid)
@@ -643,7 +678,7 @@ def fetch_vnl(cfg):
         events.append(make_event(
             uid, start_utc, 150,  # ~2.5h
             summary,
-            location=venue,
+            location=location,
             description=f"{home} vs {away}",
         ))
 
@@ -861,18 +896,12 @@ def main():
 
     season = date.today().year
 
-    vnl_cfg = cfg.get("vnl", {})
-    vnl_data_path = ROOT / "data" / f"vnl_{vnl_cfg.get('season', 2026)}.yaml"
-    added = sync_vnl_finals(vnl_cfg, SESSION, vnl_data_path)
-    if added:
-        log.info("VNL Finals sync：補了 %d 場新對戰進 %s", added, vnl_data_path)
-
     all_events = []
     all_events += fetch_mlb(cfg.get("mlb", {}), season)
     all_events += fetch_nba(cfg.get("nba", {}))
     all_events += fetch_f1(cfg.get("f1", {}))
     all_events += fetch_worldcup(cfg.get("worldcup", {}))
-    all_events += fetch_vnl(vnl_cfg)
+    all_events += fetch_vnl(cfg.get("vnl", {}))
 
     for ev in all_events:
         cal.add_component(ev)

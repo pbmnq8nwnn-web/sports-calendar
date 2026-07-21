@@ -51,7 +51,12 @@ f1:
 vnl:
   enabled: true
   season: 2026
-  # 男排 / 女排各自追蹤的隊伍（英文名）
+  # 官網 API 的賽事編號（小組賽＋決賽週都靠這個抓）。換屆時更新：
+  # 打開官網賽程頁 → 開發者工具 Network → 找 /api/v1/volley-tournament/.../{男;女}
+  tournaments:
+    men: 1661
+    women: 1662
+  # 男排 / 女排各自追蹤的隊伍（英文名，需跟官網 API 隊名一致，如 Japan / Brazil）
   teams:
     men:
       - "Japan"
