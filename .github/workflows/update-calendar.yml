@@ -59,13 +59,22 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/sports.ics
+          git add docs/sports.ics data/vnl_2026.yaml
           if git diff --staged --quiet; then
             echo "No changes to commit."
             echo "changed=false" >> $GITHUB_OUTPUT
           else
             git commit -m "chore: refresh sports.ics ($(date -u +%Y-%m-%dT%H:%MZ))"
-            git push
+            # 這個 repo 另有 hyrox-monitor.yml 排程也會 commit，
+            # push 前先 pull --rebase 防止撞車，失敗重試幾次。
+            for i in 1 2 3; do
+              if git pull --rebase origin main && git push; then
+                echo "push 成功"
+                break
+              fi
+              echo "push 失敗，5 秒後重試 ($i/3)..."
+              sleep 5
+            done
             echo "changed=true" >> $GITHUB_OUTPUT
           fi
 

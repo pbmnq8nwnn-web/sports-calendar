@@ -18,6 +18,8 @@ import yaml
 import requests
 from icalendar import Calendar, Event
 
+from vnl_finals_sync import sync_vnl_finals
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("sports-cal")
 
@@ -859,12 +861,18 @@ def main():
 
     season = date.today().year
 
+    vnl_cfg = cfg.get("vnl", {})
+    vnl_data_path = ROOT / "data" / f"vnl_{vnl_cfg.get('season', 2026)}.yaml"
+    added = sync_vnl_finals(vnl_cfg, SESSION, vnl_data_path)
+    if added:
+        log.info("VNL Finals sync：補了 %d 場新對戰進 %s", added, vnl_data_path)
+
     all_events = []
     all_events += fetch_mlb(cfg.get("mlb", {}), season)
     all_events += fetch_nba(cfg.get("nba", {}))
     all_events += fetch_f1(cfg.get("f1", {}))
     all_events += fetch_worldcup(cfg.get("worldcup", {}))
-    all_events += fetch_vnl(cfg.get("vnl", {}))
+    all_events += fetch_vnl(vnl_cfg)
 
     for ev in all_events:
         cal.add_component(ev)

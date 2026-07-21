@@ -4,7 +4,10 @@
 #   https://en.wikipedia.org/wiki/2026_FIVB_Women's_Volleyball_Nations_League
 # 時區為當地時間；generate.py 會轉 UTC。
 # 明年 VNL 2027 需要更新這個檔案。
-# Finals（男 7/29-8/2 Ningbo；女 7/22-26 Macau）等晉級隊伍公布再手動補入。
+# Finals 對戰表已於 2026-07-20/21 公布：
+#   女排 8 強對戰：https://en.wikipedia.org/wiki/2026_FIVB_Women's_Volleyball_Nations_League#Quarterfinals
+#   男排 8 強對戰：https://en.volleyballworld.com/volleyball/competitions/volleyball-nations-league/news/men-s-vnl-quarterfinal-match-ups-and-schedule-released
+# 只先補「已知對手」的場次（Japan/Brazil）；晉級到準決賽/冠軍賽的對手要等 8 強結果出爐才知道，屆時再補。
 
 matches:
   # ================ 女排 Week 1: 6/3-6/7 ================
@@ -62,3 +65,12 @@ matches:
   - {date: "2026-07-16", time: "19:20", tz: "Asia/Tokyo", gender: "men", home: "Japan", away: "Canada",    venue: "Asue Arena Osaka"}
   - {date: "2026-07-17", time: "19:20", tz: "Asia/Tokyo", gender: "men", home: "Japan", away: "Belgium",   venue: "Asue Arena Osaka"}
   - {date: "2026-07-19", time: "19:20", tz: "Asia/Tokyo", gender: "men", home: "Japan", away: "Argentina", venue: "Asue Arena Osaka"}
+
+  # ================ Finals：女排 7/22-26 Macau、男排 7/29-8/2 Ningbo ================
+  # 女排 8 強（Quarterfinal）：Brazil vs Japan
+  - {date: "2026-07-22", time: "19:30", tz: "Asia/Macau", gender: "women", home: "Brazil", away: "Japan", venue: "Macau（VNL Finals 8強）"}
+  # 男排 8 強（Quarterfinal）：Japan vs China（地主）
+  - {date: "2026-07-29", time: "19:30", tz: "Asia/Shanghai", gender: "men", home: "Japan", away: "China", venue: "Ningbo Beilun Gymnasium（VNL Finals 8強）"}
+  # 準決賽/季軍賽/冠軍賽對手要等 8 強結果出爐才知道，屆時再補：
+  #   女排準決賽 7/25、季軍賽+冠軍賽 7/26（Macau）
+  #   男排準決賽 8/1、季軍賽+冠軍賽 8/2（Ningbo）
