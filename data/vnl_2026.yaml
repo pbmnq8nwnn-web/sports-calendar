@@ -72,3 +72,7 @@ matches:
   # 準決賽/季軍賽/冠軍賽對手要等 8 強結果出爐才知道，屆時再補：
   #   女排準決賽 7/25、季軍賽+冠軍賽 7/26（Macau）
   #   男排準決賽 8/1、季軍賽+冠軍賽 8/2（Ningbo）
+
+  # ---- VNL Finals 自動同步（vnl_finals_sync.py，來源：Wikipedia wikitext） ----
+  - {date: '2026-07-22', time: '19:30', tz: Asia/Macau, gender: women, home: Brazil, away: Japan,
+  venue: Macau East Asian Games Dome（VNL Finals Quarterfinals）}
