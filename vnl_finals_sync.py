@@ -46,7 +46,7 @@ FINALS_EVENTS = [
     {
         "gender": "women",
         "wiki_title": "2026_FIVB_Women's_Volleyball_Nations_League",
-        "window": (date(2026, 7, 21), date(2026, 7, 26)),  # TEMP：TG 活體測試用，測完會 revert
+        "window": (date(2026, 7, 22), date(2026, 7, 26)),
         "tz": "Asia/Macau",
         "venue": "Macau East Asian Games Dome",
         "qualified": {"USA", "CHN", "ITA", "NED", "BRA", "JPN", "TUR", "CAN"},
