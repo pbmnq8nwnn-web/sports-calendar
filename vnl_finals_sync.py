@@ -153,6 +153,8 @@ def sync_vnl_finals(cfg, session, data_path, today=None):
     if not active_events:
         return 0
 
+    import yaml
+
     existing_keys = _existing_match_keys(data_path)
     new_lines = []
 
@@ -192,11 +194,21 @@ def sync_vnl_finals(cfg, session, data_path, today=None):
                 continue
 
             round_label = f"（VNL Finals {round_name}）" if round_name else "（VNL Finals）"
-            new_lines.append(
-                f'  - {{date: "{match_date}", time: "{time_raw}", tz: "{event["tz"]}", '
-                f'gender: "{event["gender"]}", home: "{home_name}", away: "{away_name}", '
-                f'venue: "{event["venue"]}{round_label}"}}'
-            )
+            # round_name / time_raw 來自 Wikipedia wikitext，可能含雙引號或反斜線等特殊字元；
+            # 不手刻 YAML 字串，改用 yaml.safe_dump 序列化 dict，讓 PyYAML 正確轉義。
+            record = {
+                "date": match_date,
+                "time": time_raw,
+                "tz": event["tz"],
+                "gender": event["gender"],
+                "home": home_name,
+                "away": away_name,
+                "venue": f'{event["venue"]}{round_label}',
+            }
+            flow = yaml.safe_dump(
+                record, default_flow_style=True, allow_unicode=True, sort_keys=False
+            ).strip()
+            new_lines.append(f"  - {flow}")
             existing_keys.add(key)
             log.info(
                 "VNL Finals sync：新增 %s %s vs %s（%s %s）",
