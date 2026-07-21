@@ -67,10 +67,8 @@ matches:
   - {date: "2026-07-19", time: "19:20", tz: "Asia/Tokyo", gender: "men", home: "Japan", away: "Argentina", venue: "Asue Arena Osaka"}
 
   # ================ Finals：女排 7/22-26 Macau、男排 7/29-8/2 Ningbo ================
-  # 女排 8 強（Quarterfinal）：Brazil vs Japan
-  - {date: "2026-07-22", time: "19:30", tz: "Asia/Macau", gender: "women", home: "Brazil", away: "Japan", venue: "Macau（VNL Finals 8強）"}
-  # 男排 8 強（Quarterfinal）：Japan vs China（地主）
-  - {date: "2026-07-29", time: "19:30", tz: "Asia/Shanghai", gender: "men", home: "Japan", away: "China", venue: "Ningbo Beilun Gymnasium（VNL Finals 8強）"}
+  # 8 強對戰暫時移除，測試 vnl_finals_sync.py 在正式環境會不會重新偵測到並自動補回、
+  # 觸發真正的 commit + push + TG 通知（測試完會被系統自動補回，不用手動復原）。
   # 準決賽/季軍賽/冠軍賽對手要等 8 強結果出爐才知道，屆時再補：
   #   女排準決賽 7/25、季軍賽+冠軍賽 7/26（Macau）
   #   男排準決賽 8/1、季軍賽+冠軍賽 8/2（Ningbo）
