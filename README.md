@@ -190,6 +190,15 @@ Workflow 內建：
 
 Workflow 失敗時 GitHub 預設會寄 email 到你的帳號 email（前提是 Settings → Notifications 把 Actions 那欄打勾）。
 
+## VNL Finals 對戰自動同步
+
+VNL（世界排球聯賽）決賽週期（8 強～冠軍賽）的對手要等前一輪打完才知道，`data/vnl_{season}.yaml` 沒辦法像小組賽一樣提前整理好，以前只能人工盯著 Wikipedia 手動補。`vnl_finals_sync.py` 會在賽事日期窗口內自動讀該屆賽事 Wikipedia 頁面的 wikitext（比渲染後的網頁更新更快、格式更穩定），解析已確定對手的場次，補進 `data/vnl_{season}.yaml`，讓既有每 3 小時一次的排程自動接手（重新產生 `.ics` → commit → TG 通知），不用另外開 workflow。
+
+- **只在窗口內動作**：日期窗口寫在 `vnl_finals_sync.py` 的 `FINALS_EVENTS`，非賽事期間完全不會發 HTTP 請求
+- **防呆**：抓到的隊伍代碼如果不在賽前就已知的 8 強名單內，視為異常直接跳過、記警告，不會誤寫進行事曆
+- **失敗保護**：Wikipedia 抓取或解析失敗只記警告、不中斷整個 workflow（NBA/MLB/F1 等其他賽事照常執行）
+- **每年要手動更新一次**：VNL 每年主辦城市、場館、晉級隊伍都不同，`FINALS_EVENTS`（日期窗口、場館名、8 強名單）需要在每年 Finals 開打前手動改一次——跟 `data/vnl_2026.yaml` 本身一樣，是有意設計成部分手動維護的
+
 ## HYROX 開賣監控（獨立模組）
 
 `hyrox/monitor.py` + `.github/workflows/hyrox-monitor.yml`：監控 HYROX 場次官網，開放報名的瞬間發 Telegram 通知（含可直接點的購票按鈕）。與上面的行事曆功能互相獨立，共用同一組 Telegram secrets。
@@ -209,5 +218,6 @@ MIT License。詳見 [LICENSE](LICENSE)。
 - MLB Stats API：https://statsapi.mlb.com
 - ESPN NBA / World Cup：https://site.api.espn.com
 - F1：https://api.jolpi.ca （Ergast 後繼）
+- VNL：小組賽整理自 Wikipedia（見 `data/vnl_{season}.yaml` 檔頭註解）；Finals 對戰由 `vnl_finals_sync.py` 自動讀 Wikipedia wikitext
 
 所有資料源皆為公開 API，本專案不附帶任何賠率 / 博弈資訊。
