@@ -75,11 +75,17 @@ jobs:
           git commit -m "chore: update hyrox monitor state ($(date -u +%Y-%m-%dT%H:%MZ))"
           # 這個 repo 另有 update-calendar.yml 排程也會 commit，
           # push 前先 pull --rebase 防止撞車，失敗重試幾次。
+          PUSH_OK=false
           for i in 1 2 3; do
             if git pull --rebase origin main && git push; then
               echo "push 成功"
+              PUSH_OK=true
               break
             fi
             echo "push 失敗，5 秒後重試 ($i/3)..."
             sleep 5
           done
+          if [ "$PUSH_OK" != "true" ]; then
+            echo "::error::push 三次都失敗，state.json 沒有更新到最新內容"
+            exit 1
+          fi
