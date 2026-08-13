@@ -642,17 +642,24 @@ def fetch_vnl(cfg):
         if home not in selected and away not in selected:
             continue
 
-        # 開賽時間官網已給 UTC，直接用，不用自己算時區；本地時間只拿來組 UID
+        # 開賽時間官網已給 UTC，直接用，不用自己算時區
         try:
             start_utc = datetime.fromisoformat(
                 m["matchDateUtc"].replace("Z", "+00:00")
             ).astimezone(UTC)
-            local_dt = datetime.fromisoformat(m["matchDateTimeLocal"])
         except Exception as e:
             log.warning("VNL 時間解析失敗（%s vs %s）：%s", home, away, e)
             continue
-        local_date = local_dt.strftime("%Y-%m-%d")
-        local_time = local_dt.strftime("%H:%M")
+
+        # 用官網的 matchNo 當 UID（穩定的賽事編號，跟其他運動的 game_pk /
+        # event_id 同一套做法）。舊版曾用 date+time+home+away 組 UID，但官網
+        # 回傳的 matchDateTimeLocal / teamANo-teamBNo 在不同次抓取間會不穩定，
+        # 導致同一場比賽每次都被判定成「移除+新增」，Telegram 通知因此重複轟炸
+        # 同一批賽事。
+        match_no = m.get("matchNo")
+        if match_no is None:
+            log.warning("VNL 缺 matchNo（%s vs %s），略過避免 UID 不穩定", home, away)
+            continue
 
         zh_home = _vnl_zh(home)
         zh_away = _vnl_zh(away)
@@ -670,7 +677,7 @@ def fetch_vnl(cfg):
         city = m.get("city") or ""
         location = f"{city}（VNL {round_zh}）" if round_zh else city
 
-        uid = make_uid("vnl", season, gender, local_date, local_time, home, away)
+        uid = make_uid("vnl", match_no)
         if uid in seen_uids:
             continue
         seen_uids.add(uid)
@@ -770,10 +777,11 @@ def compute_diff(old_fields, new_fields):
 
 
 def pair_vnl_reschedules(added, removed, old_fields, new_fields):
-    """VNL 的 UID 含比賽日期時間，改期會讓 UID 整個換掉，變成「移除一場+
-    新增一場」。這裡把兩邊都是 VNL、且 SUMMARY 球隊組合相同的配對挑出來，
-    合併成一則「改期」訊息。其他運動用穩定 ID（game_pk / event_id / round_no /
-    ev_id），不會有這個問題，不需要處理。"""
+    """VNL 現在用 matchNo 當穩定 UID，改期會直接落在 compute_diff 的
+    changed 清單（dtstart 變了），不會再變成「移除+新增」。這裡保留是為了
+    保護少數還是會整場換 UID 的邊緣情況（例如官網把某場比賽下架重建），
+    把兩邊都是 VNL、且 SUMMARY 球隊組合相同的配對挑出來，合併成一則
+    「改期」訊息，避免使用者看到兩則不相關的通知。"""
     removed_pool = defaultdict(list)
     for uid in removed:
         summ = old_fields[uid]["summary"] or ""
