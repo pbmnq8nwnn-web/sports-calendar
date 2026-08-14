@@ -5,11 +5,33 @@ timezone: Asia/Taipei
 
 nba:
   enabled: true
+  # 只有 tracked_players「本季是預測先發」的場次才會出現在行事曆
+  # teams 是抓資料範圍：新增追蹤球員時，記得把他所屬的球隊也加進這裡，
+  # 否則系統根本不會去抓他球隊的賽程，永遠偵測不到他
+  # 沒有設 tracked_players 時 → 維持舊行為，teams 的比賽全收
   # ESPN team id 對照: lakers=13, spurs=24, warriors=9, celtics=2,
   # mavericks=6, suns=21, thunder=25, bucks=15, sixers=20, nuggets=7, heat=14
   teams:
     - { id: 13, name: "Los Angeles Lakers", zh: "湖人" }
-    - { id: 24, name: "San Antonio Spurs", zh: "馬刺" }
+    - { id: 20, name: "Philadelphia 76ers", zh: "76人" }
+    - { id: 7, name: "Denver Nuggets", zh: "金塊" }
+  # 追蹤特定球員：命中才產生事件，summary 後綴 🎯名字
+  #
+  # ⚠️ 跟 MLB 的重要差別：NBA 沒有「賽前先發預告」這種資料。
+  #    ESPN 的先發名單要等比賽開打後才有，對行事曆來說太晚。
+  #    所以這裡用「ESPN 該季深度表 rank 1（預測先發五人）」當替代判斷，
+  #    它是「整季一張」的預測表，不是逐場判斷，命中的話該隊全季比賽都會收錄。
+  #
+  # track: "starter" 深度表 rank 1（預測先發）＋ 未被列為長期缺陣
+  # track: "roster"  只要在現役名單、未被列為長期缺陣就算（不管先不先發）
+  tracked_players:
+    - { id: 3945274, team_id: 13, zh: "077", track: "starter" }  # Luka Doncic
+    - { id: 1966, team_id: 20, zh: "LBJ", track: "starter" }  # LeBron James
+    - { id: 3112335, team_id: 7, zh: "小丑", track: "starter" }  # Nikola Jokic
+  # 球員被列為 Out 時要不要照樣收錄該隊比賽
+  # false = 傷停期間該隊比賽從行事曆消失（會反覆新增／移除，Telegram 通知較吵）
+  # true  = 照樣收錄，只是不加 🎯（先用 true，觀察一季再說）
+  include_when_injured: true
 
 mlb:
   enabled: true

@@ -197,6 +197,74 @@ NBA_ZH = {
     23: "國王", 24: "馬刺", 28: "暴龍", 26: "爵士", 27: "巫師",
 }
 
+# ESPN 深度表：整季一張的位置順位表，rank=1 就是該位置的預測先發。
+# 這是 NBA 版「先發判斷」的資料源，ESPN 沒有 MLB probablePitcher 那種
+# 賽前先發預告，真正的先發名單要等比賽開打後才查得到（賽前查會 404），
+# 對行事曆來說太晚，所以退而求其次用深度表。
+NBA_DEPTHCHART_URL = (
+    "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba"
+    "/seasons/{season}/teams/{tid}/depthcharts"
+)
+# 球隊現役名單：一次呼叫同時拿到「還在不在這隊」與「傷況」
+NBA_ROSTER_URL = (
+    "https://site.web.api.espn.com/apis/site/v2/sports/basketball/nba/teams/{tid}/roster"
+)
+# 視為「不會上場」的傷兵狀態（ESPN 用字：Out / Suspension / Day-To-Day 等）
+NBA_OUT_STATUSES = {"out", "suspension", "injured reserve"}
+
+
+def _nba_projected_starters(tid, season):
+    """回傳該隊該季深度表 rank=1 的球員 id 集合（五個位置各一）。
+    抓不到回 None，讓呼叫端 fail-open（照樣收錄比賽），
+    不要因為深度表掛掉就讓整個 NBA 行事曆消失。"""
+    try:
+        data = fetch_json(NBA_DEPTHCHART_URL.format(season=season, tid=tid))
+    except Exception as e:
+        log.warning("NBA depth chart 抓取失敗 team=%s season=%s: %s", tid, season, e)
+        return None
+
+    items = data.get("items") or []
+    if not items:
+        log.warning("NBA depth chart 無資料 team=%s season=%s", tid, season)
+        return None
+
+    starters = set()
+    for pos_data in (items[0].get("positions") or {}).values():
+        for a in pos_data.get("athletes", []) or []:
+            if a.get("rank") != 1:
+                continue
+            # $ref 形如 .../seasons/2027/athletes/3945274?lang=en&region=us
+            ref = (a.get("athlete") or {}).get("$ref", "")
+            if "/athletes/" not in ref:
+                continue
+            try:
+                starters.add(int(ref.split("/athletes/")[1].split("?")[0]))
+            except (IndexError, ValueError):
+                continue
+    return starters or None
+
+
+def _nba_roster_status(tid):
+    """回傳 {athlete_id: 是否可上場}。抓不到回 None（fail-open）。"""
+    try:
+        data = fetch_json(NBA_ROSTER_URL.format(tid=tid))
+    except Exception as e:
+        log.warning("NBA roster 抓取失敗 team=%s: %s", tid, e)
+        return None
+
+    result = {}
+    for a in data.get("athletes", []) or []:
+        try:
+            aid = int(a.get("id"))
+        except (TypeError, ValueError):
+            continue
+        statuses = {
+            (i.get("status") or "").lower()
+            for i in (a.get("injuries") or [])
+        }
+        result[aid] = not (statuses & NBA_OUT_STATUSES)
+    return result or None
+
 
 def fetch_nba(cfg):
     if not cfg.get("enabled"):
@@ -205,6 +273,57 @@ def fetch_nba(cfg):
     # 合併使用者選擇的中文名 + 全隊備用中文名
     zh_map = dict(NBA_ZH)
     zh_map.update({t["id"]: t["zh"] for t in cfg["teams"]})
+
+    # 追蹤的球員（比照 MLB tracked_players，NBA 版沒有賽前先發預告，
+    # 改用該季深度表 rank 1 判斷，見 _nba_projected_starters）
+    tracked = cfg.get("tracked_players", []) or []
+    tracked_by_team = defaultdict(list)
+    for p in tracked:
+        tracked_by_team[p["team_id"]].append(p)
+    include_when_injured = cfg.get("include_when_injured", True)
+
+    # 每支球隊 / 每季只查一次，不要每場比賽都打 API
+    starters_cache = {}
+    roster_cache = {}
+
+    def _matched_names(tid, season):
+        """回傳這場比賽該收錄的 🎯 名字清單。
+        None = 這隊沒設追蹤球員（維持舊行為，全收，不加後綴）。
+        []   = 有設追蹤球員但都沒命中，呼叫端要跳過這場。"""
+        players = tracked_by_team.get(tid)
+        if not players:
+            return None
+
+        if (tid, season) not in starters_cache:
+            starters_cache[(tid, season)] = _nba_projected_starters(tid, season)
+        starters = starters_cache[(tid, season)]
+
+        if tid not in roster_cache:
+            roster_cache[tid] = _nba_roster_status(tid)
+        roster = roster_cache[tid]
+
+        names = []
+        for p in players:
+            pid = p["id"]
+            # 1) 還在不在這隊（roster 抓不到就 fail-open 當在）
+            if roster is not None and pid not in roster:
+                log.warning(
+                    "追蹤球員 %s (%s) 不在球隊 %s 的現役名單，可能已被交易，請更新 config.yaml",
+                    p["zh"], pid, tid,
+                )
+                continue
+            # 2) 傷況
+            if roster is not None and not roster.get(pid, True):
+                if not include_when_injured:
+                    continue
+            # 3) 先發判斷（starters 抓不到就 fail-open 當先發）
+            if p.get("track", "starter") == "starter":
+                if starters is not None and pid not in starters:
+                    continue
+            names.append(p["zh"])
+        return names
+
+    skipped = 0
 
     # 跨季 + 跨 seasontype 抓取（seasontype: 1=Preseason, 2=Regular, 3=Postseason）
     # 6 月時 current season 已結束，next season 10 月開打，所以都抓
@@ -270,7 +389,27 @@ def fetch_nba(cfg):
                     elif "Preseason" in type_name:
                         label = "（季前賽）"
 
+                    # 追蹤球員命中判斷（比照 MLB：兩隊都查，away 在前維持順序）
+                    matched = []
+                    has_tracking = False
+                    for side_id in (away_id, home_id):
+                        names = _matched_names(side_id, season)
+                        if names is None:
+                            continue  # 這隊沒設追蹤球員
+                        has_tracking = True
+                        for n in names:
+                            if n not in matched:
+                                matched.append(n)
+
+                    # 有設追蹤球員卻全部沒命中 → 跳過這場
+                    if has_tracking and not matched:
+                        skipped += 1
+                        continue
+
                     summary = f"🏀 NBA｜{zh_away} @ {zh_home}{label}"
+                    if matched:
+                        summary += "  🎯" + "、".join(matched)
+
                     venue = comp.get("venue", {}).get("fullName", "")
                     event_id = ev.get("id") or comp.get("id")
                     uid = make_uid("nba", event_id)
@@ -289,7 +428,7 @@ def fetch_nba(cfg):
         if u not in seen:
             seen.add(u)
             uniq.append(ev)
-    log.info("NBA: %d events", len(uniq))
+    log.info("NBA: %d events (%d games skipped, no tracked player matched)", len(uniq), skipped)
     return uniq
 
 
