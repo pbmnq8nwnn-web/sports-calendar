@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "last_check": "2026-08-17T19:43:58.247571+08:00"
+    "last_check": "2026-08-17T21:10:26.830479+08:00"
   },
   "hyrox_taipei_2027": {
     "notified_open": false,
@@ -16,7 +16,7 @@
     "last_ticket_hash": "ee8876af6c2df1d4a44219ea4014300201c23087e0f8ef504dc89481fc77ff4b",
     "notified_hash": "ee8876af6c2df1d4a44219ea4014300201c23087e0f8ef504dc89481fc77ff4b",
     "hot_until": "2026-08-16T14:04:50.794095+08:00",
-    "fail_streak": 0,
+    "fail_streak": 1,
     "fail_notified": false,
     "last_fail_notified_at": null
   }
