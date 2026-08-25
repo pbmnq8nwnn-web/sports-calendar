@@ -459,15 +459,17 @@ def f1_session_enabled(cfg, key):
 
 
 def fetch_f1(cfg):
+    """回傳 (events, ok)；ok=False 代表整季賽程都沒抓到，呼叫端要拿舊 ics
+    的 F1 場次補回來，避免單次 API 逾時被 diff 誤判成整季賽程取消。"""
     if not cfg.get("enabled"):
-        return []
+        return [], True
     events = []
     season = cfg.get("season", date.today().year)
     try:
         data = fetch_json(f"https://api.jolpi.ca/ergast/f1/{season}.json")
     except Exception as e:
         log.error("F1 fetch failed: %s", e)
-        return []
+        return [], False
 
     race_session_enabled = cfg.get("sessions", {}).get("race", True)
 
@@ -516,7 +518,7 @@ def fetch_f1(cfg):
                 log.warning("F1 %s parse failed for round %s: %s", key, round_no, e)
 
     log.info("F1: %d events", len(events))
-    return events
+    return events, True
 
 
 # ---------------- World Cup ----------------
@@ -746,9 +748,11 @@ def _fetch_vnl_api(season, tournaments):
 
 
 def fetch_vnl(cfg):
-    """打官網 API 取 VNL 賽程，依 config 追蹤的隊伍過濾出關心的場次。"""
+    """打官網 API 取 VNL 賽程，依 config 追蹤的隊伍過濾出關心的場次。
+    回傳 (events, ok)；ok=False 代表這次整批沒抓到，呼叫端要拿舊 ics
+    的 VNL 場次補回來，避免單次 API 逾時被 diff 誤判成全部賽事取消。"""
     if not cfg.get("enabled"):
-        return []
+        return [], True
 
     season = cfg.get("season", 2026)
     tournaments = cfg.get("tournaments", {}) or {}
@@ -758,7 +762,7 @@ def fetch_vnl(cfg):
     except Exception as e:
         # API 掛掉不讓整支 generate.py 崩（NBA/MLB/F1 還要正常跑）
         log.warning("VNL API 抓取失敗，本次略過 VNL：%s", e)
-        return []
+        return [], False
 
     team_name = {t.get("no"): t.get("name") for t in data.get("allTeams", []) or []}
     men_teams = set(cfg.get("teams", {}).get("men", []) or [])
@@ -829,7 +833,7 @@ def fetch_vnl(cfg):
         ))
 
     log.info("VNL: %d events", len(events))
-    return events
+    return events, True
 
 
 # ---------------- Diff / Change summary ----------------
@@ -1022,6 +1026,27 @@ def write_diff_summary(text):
 
 # ---------------- Main ----------------
 
+# 各運動 SUMMARY 開頭的 emoji 前綴，carry_over() 靠這個辨認舊事件屬於哪個運動
+# （UID 是 md5 雜湊，看不出運動別）。
+SPORT_PREFIX = {"f1": "🏎️ F1", "vnl": "🏐 VNL"}
+
+
+def carry_over(events, ok, prefix, old_events_by_uid):
+    """某運動這次抓取不完整（ok=False）時，把舊 ics 裡同運動、這次沒抓到
+    的場次原封不動補回來，避免 diff 把「API 掛掉」誤判成「賽事整批取消」。
+    下次抓取恢復正常，新資料會直接蓋過這裡補的舊資料。"""
+    if ok:
+        return events
+    have = {str(ev["uid"]) for ev in events}
+    carried = [
+        old_ev for uid, old_ev in old_events_by_uid.items()
+        if uid not in have and str(old_ev.get("summary") or "").startswith(prefix)
+    ]
+    if carried:
+        log.warning("%s 抓取不完整，沿用舊 ics 的 %d 場，避免誤判成整批取消", prefix, len(carried))
+    return events + carried
+
+
 def main():
     cfg_path = ROOT / "config.yaml"
     cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
@@ -1029,10 +1054,13 @@ def main():
     tz_name = cfg.get("timezone", "Asia/Taipei")
     log.info("Display timezone: %s (events stored as UTC, Apple Calendar will convert)", tz_name)
 
-    # 寫檔之前先讀舊的 .ics，供產生異動摘要用
+    # 寫檔之前先讀舊的 .ics，供產生異動摘要、以及抓取失敗時的 carry_over 用
     old_cal = load_old_calendar()
     old_events = old_cal.walk("VEVENT") if old_cal is not None else []
     old_fields = build_fields_map(old_events)
+    old_events_by_uid = {
+        uid: ev for ev in old_events if (uid := _uid_of(ev)) is not None
+    }
 
     cal = Calendar()
     cal.add("prodid", "-//Sports Calendar//ZH-TW//")
@@ -1046,9 +1074,19 @@ def main():
     all_events = []
     all_events += fetch_mlb(cfg.get("mlb", {}), season)
     all_events += fetch_nba(cfg.get("nba", {}))
-    all_events += fetch_f1(cfg.get("f1", {}))
+
+    f1_events, f1_ok = fetch_f1(cfg.get("f1", {}))
+    all_events += carry_over(f1_events, f1_ok, SPORT_PREFIX["f1"], old_events_by_uid)
+
     all_events += fetch_worldcup(cfg.get("worldcup", {}))
-    all_events += fetch_vnl(cfg.get("vnl", {}))
+
+    vnl_events, vnl_ok = fetch_vnl(cfg.get("vnl", {}))
+    all_events += carry_over(vnl_events, vnl_ok, SPORT_PREFIX["vnl"], old_events_by_uid)
+
+    # 固定輸出順序（依開賽時間、UID），讓同樣一批賽事永遠產生同樣的 .ics，
+    # 不會因為 carry_over 補的事件插入位置不同而造成「內容沒變但順序變了」
+    # 的假 diff。
+    all_events.sort(key=lambda ev: (_normalize_dt(ev["dtstart"].dt), str(ev["uid"])))
 
     for ev in all_events:
         cal.add_component(ev)
@@ -1064,9 +1102,15 @@ def main():
         len(added), len(removed), len(changed), len(rescheduled),
     )
 
-    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    OUT_PATH.write_bytes(cal.to_ical())
-    log.info("Wrote %d events to %s", len(all_events), OUT_PATH)
+    # diff 全空代表這次產生的內容跟舊檔語意上完全一樣，乾脆連檔案都不動，
+    # 把「內容沒變就絕不 commit、絕不發通知」的防線往前提，避免任何我們
+    # 還沒想到的假 diff 路徑（例如未來 icalendar 函式庫改版排版跑掉）。
+    if not (added or removed or changed or rescheduled):
+        log.info("Diff 全空，內容與舊檔相同，不覆寫 %s", OUT_PATH)
+    else:
+        OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        OUT_PATH.write_bytes(cal.to_ical())
+        log.info("Wrote %d events to %s", len(all_events), OUT_PATH)
 
 
 if __name__ == "__main__":
