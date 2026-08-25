@@ -1047,6 +1047,31 @@ def carry_over(events, ok, prefix, old_events_by_uid):
     return events + carried
 
 
+# 已經開打過的比賽（對戰雙方/時間/地點都已定案）超過這個緩衝時間後，一律
+# 視為「不會再變」，直接凍結沿用舊 ics，不再參與 diff。緩衝設 24 小時是為了
+# 吃掉 MLB 雨延延賽這類情況：開賽時間到了才臨時宣布延賽，補賽是另一個
+# game_pk，若沒有緩衝，舊那筆會變成永遠清不掉的幽靈場次。
+FREEZE_AFTER_HOURS = 24
+
+
+def _ev_start(ev):
+    return _normalize_dt(ev.get("dtstart"))
+
+
+def apply_past_freeze(fetched, old_past_by_uid, cutoff):
+    """已經是過去（dtstart < cutoff）的場次一律以舊 ics 為準，不管這次抓到
+    什麼都不理會，從根本上讓「已發生的比賽」不再受任何一次 API 抖動影響。
+    如果官方真的把某場過去的比賽改到未來（例如 MLB 補賽），新資料的
+    dtstart 已經不在過去範圍，這裡會尊重新資料、正常走 diff。"""
+    by_uid = {str(ev["uid"]): ev for ev in fetched}
+    for uid, old_ev in old_past_by_uid.items():
+        newly = by_uid.get(uid)
+        if newly is not None and _ev_start(newly) >= cutoff:
+            continue  # 官方把這場改到未來了，尊重新資料
+        by_uid[uid] = old_ev  # 過去場次一律用舊 ics，不看這次抓到什麼
+    return list(by_uid.values())
+
+
 def main():
     cfg_path = ROOT / "config.yaml"
     cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
@@ -1054,12 +1079,19 @@ def main():
     tz_name = cfg.get("timezone", "Asia/Taipei")
     log.info("Display timezone: %s (events stored as UTC, Apple Calendar will convert)", tz_name)
 
-    # 寫檔之前先讀舊的 .ics，供產生異動摘要、以及抓取失敗時的 carry_over 用
+    # 寫檔之前先讀舊的 .ics，供產生異動摘要、抓取失敗時的 carry_over、
+    # 以及過去賽事凍結（apply_past_freeze）用
     old_cal = load_old_calendar()
     old_events = old_cal.walk("VEVENT") if old_cal is not None else []
     old_fields = build_fields_map(old_events)
     old_events_by_uid = {
         uid: ev for ev in old_events if (uid := _uid_of(ev)) is not None
+    }
+
+    freeze_cutoff = datetime.now(UTC) - timedelta(hours=FREEZE_AFTER_HOURS)
+    old_past_by_uid = {
+        uid: ev for uid, ev in old_events_by_uid.items()
+        if isinstance(_ev_start(ev), datetime) and _ev_start(ev) < freeze_cutoff
     }
 
     cal = Calendar()
@@ -1083,9 +1115,13 @@ def main():
     vnl_events, vnl_ok = fetch_vnl(cfg.get("vnl", {}))
     all_events += carry_over(vnl_events, vnl_ok, SPORT_PREFIX["vnl"], old_events_by_uid)
 
+    # 已經打完超過 24 小時的比賽，一律凍結沿用舊 ics，不再受任何一次 API
+    # 抖動影響（見 apply_past_freeze 說明）。
+    all_events = apply_past_freeze(all_events, old_past_by_uid, freeze_cutoff)
+
     # 固定輸出順序（依開賽時間、UID），讓同樣一批賽事永遠產生同樣的 .ics，
-    # 不會因為 carry_over 補的事件插入位置不同而造成「內容沒變但順序變了」
-    # 的假 diff。
+    # 不會因為 carry_over / apply_past_freeze 補的事件插入位置不同而造成
+    # 「內容沒變但順序變了」的假 diff。
     all_events.sort(key=lambda ev: (_normalize_dt(ev["dtstart"].dt), str(ev["uid"])))
 
     for ev in all_events:
