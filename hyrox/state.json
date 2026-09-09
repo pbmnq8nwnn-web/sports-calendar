@@ -1,13 +1,13 @@
 {
   "_meta": {
-    "last_check": "2026-09-10T05:14:54.072021+08:00"
+    "last_check": "2026-09-10T07:20:49.542544+08:00"
   },
   "hyrox_taipei_2027": {
     "notified_open": false,
     "last_ticket_hash": "3d3f12bd2660ef6a7bc7b504264a2bb403bf06fa777b87d74a02502710c0dc77",
     "notified_hash": null,
     "hot_until": null,
-    "fail_streak": 3,
+    "fail_streak": 4,
     "fail_notified": true,
     "last_fail_notified_at": "2026-09-10T05:14:54.072021+08:00"
   },
