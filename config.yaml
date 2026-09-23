@@ -56,6 +56,8 @@ mlb:
     - { id: 701678, zh: "李灝宇", track: "lineup" }
     - { id: 678906, zh: "鄧愷威", track: "pitcher" }
     - { id: 691907, zh: "鄭宗哲", track: "lineup" }
+    - { id: 669373, zh: "史庫寶", track: "pitcher" }  # Tarik Skubal，2026-08-02 交易到道奇
+    - { id: 605483, zh: "史奈爾", track: "pitcher" }  # Blake Snell，現效力道奇
 
 f1:
   enabled: true
