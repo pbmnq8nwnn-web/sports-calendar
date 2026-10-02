@@ -3989,6 +3989,15 @@ DESCRIPTION:Round 16 - Bahrain Grand Prix in Malaysia - Q
 LOCATION:Sepang International Circuit\, Kuala Lumpur\, Malaysia
 END:VEVENT
 BEGIN:VEVENT
+SUMMARY:⚾ MLB｜勇士 @ 道奇（NL Division Series）  🎯史庫寶
+DTSTART:20261003T200000Z
+DTEND:20261003T233000Z
+DTSTAMP:20261003T200000Z
+UID:f4d2d6daa538381e48dea7f3aeb67854@sports-calendar
+DESCRIPTION:Atlanta Braves @ Los Angeles Dodgers
+LOCATION:UNIQLO Field at Dodger Stadium
+END:VEVENT
+BEGIN:VEVENT
 SUMMARY:🏎️ F1｜R16 Bahrain Grand Prix in Malaysia（正賽）
 DTSTART:20261004T070000Z
 DTEND:20261004T090000Z
